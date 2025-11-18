@@ -26,7 +26,7 @@ def connect_db(db_path):
 
 def load_data_from_db(db_path):
     """
-    (V4.26: 现在也加载 ipo_subscription_log)
+    (V4.28: 加载 ipo_subscription_log)
     """
     conn = connect_db(db_path)
     if conn is None:
@@ -40,18 +40,16 @@ def load_data_from_db(db_path):
 
         df_ipo = pd.DataFrame()
         df_ipo_subs = pd.DataFrame()
-
         try:
             df_ipo = pd.read_sql_query("SELECT * FROM ipo_log", conn)
             print("Loading ipo_log...")
         except pd.errors.DatabaseError:
-            print("ipo_log not found (might be older simulation), skipping.")
-
+            print("ipo_log not found, skipping.")
         try:
             df_ipo_subs = pd.read_sql_query("SELECT * FROM ipo_subscription_log", conn)
             print("Loading ipo_subscription_log...")
         except pd.errors.DatabaseError:
-            print("ipo_subscription_log not found (might be older simulation), skipping.")
+            print("ipo_subscription_log not found, skipping.")
 
         print("Data load complete.")
         return df_market, df_stock, df_trader, df_ipo, df_ipo_subs
@@ -62,7 +60,7 @@ def load_data_from_db(db_path):
         if conn:
             conn.close()
 
-# --- V4.16 辅助格式化函数 ---
+# (V4.16 格式化函数 - 保持不变)
 def format_large_number(n):
     if n is None or pd.isna(n) or n == 0: return '-'
     if abs(n) > 1e12: return f"{n / 1e12:.2f} T"
@@ -79,7 +77,6 @@ def format_percent(n):
 def format_num(n, precision=2):
     if n is None or pd.isna(n): return '-'
     return f"{n:.{precision}f}"
-# --- V4.17 详细信息面板的辅助函数 ---
 def create_details_table(table_data):
     half_len = (len(table_data) + 1) // 2
     col1, col2 = table_data[:half_len], table_data[half_len:]
@@ -96,7 +93,7 @@ def create_details_table(table_data):
 
 # --- 初始化 Dash App ---
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.title = "ABM Simulation Analysis (V4.26-EN)" # 版本更新
+app.title = "ABM Simulation Analysis (V4.28-EN)" # 版本更新
 
 # --- 布局 (Layout) ---
 app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
@@ -124,10 +121,9 @@ app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
         ]),
     ]), className="mb-4"),
 
-    # --- Tabs ---
+    # --- Tabs (V4.26 布局 - 保持不变) ---
     dbc.Tabs(id="main-tabs", active_tab="tab-market", children=[
-
-        # --- 1. 市场标签 (V4.17.1) ---
+        # (1. Market - 保持不变)
         dbc.Tab(label='1. Market', tab_id='tab-market', children=[
             dbc.Card(dbc.CardBody([
                 html.H3("Market Daily Details", className="mt-3"),
@@ -143,8 +139,7 @@ app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
                 dcc.Loading(id="loading-market-kline", children=[dcc.Graph(id='market-kline-chart')]),
             ]), className="mt-3")
         ]),
-
-        # --- 2. 股票标签 (V4.17.1) ---
+        # (2. Stock - 保持不变)
         dbc.Tab(label='2. Stock', tab_id='tab-stock', children=[
             dbc.Card(dbc.CardBody([
                 html.H3("Select Stock", className="mt-3"),
@@ -164,8 +159,7 @@ app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
                 ]),
             ]), className="mt-3")
         ]),
-
-        # --- 3. 交易员标签 (V4.17.1) ---
+        # (3. Trader - 保持不变)
         dbc.Tab(label='3. Trader', tab_id='tab-trader', children=[
             dbc.Card(dbc.CardBody([
                 html.H3("Select Trader", className="mt-3"),
@@ -190,8 +184,7 @@ app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
                 ])
             ]), className="mt-3")
         ]),
-
-        # --- 4. 代理类型分析标签 (V4.17.1) ---
+        # (4. Agent Type - 保持不变)
         dbc.Tab(label='4. Agent Type Analysis', tab_id='tab-agent-type', children=[
             dbc.Card(dbc.CardBody([
                 html.H3("Agent Type Daily Snapshot", className="mt-3"),
@@ -209,8 +202,7 @@ app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
                 dcc.Loading(id="loading-agent-type-chart2", children=[dcc.Graph(id='agent-type-params-chart')]),
             ]), className="mt-3")
         ]),
-
-        # --- 5. 【【修改 V4.26】】 IPO 分析标签 ---
+        # (5. IPO - 保持不变)
         dbc.Tab(label='5. IPO Analysis', tab_id='tab-ipo', children=[
             dbc.Card(dbc.CardBody([
                 html.H3("IPO Summary", className="mt-3"),
@@ -228,11 +220,9 @@ app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
                         style_header={'fontWeight': 'bold'}, style_table={'overflowX': 'auto'},
                     )
                 ]),
-
                 html.H3("IPO Subscription Details (Lists)", className="mt-4"),
                 dcc.Dropdown(id='ipo-stock-dropdown', options=[],
                              placeholder="Select a stock to see subscribers...", className="mb-3"),
-
                 dcc.Loading(id="loading-ipo-subscribers-table", children=[
                     dash_table.DataTable(
                         id='ipo-subscribers-table',
@@ -246,10 +236,8 @@ app.layout = dbc.Container(fluid=True, className="p-4 bg-light", children=[
                         style_header={'fontWeight': 'bold'}, style_table={'overflowX': 'auto'},
                     )
                 ]),
-
             ]), className="mt-3")
         ]),
-
     ])
 ])
 
@@ -285,7 +273,7 @@ def load_data_to_store(n_clicks, selected_db):
         print("No database selected, cancelling load.")
         raise PreventUpdate
 
-    # 【【修改 V4.26】】
+    # 【【修改 V4.28】】
     df_market, df_stock, df_trader, df_ipo, df_ipo_subs = load_data_from_db(selected_db)
 
     if df_market.empty or df_stock.empty or df_trader.empty:
@@ -297,7 +285,7 @@ def load_data_to_store(n_clicks, selected_db):
         'stock': df_stock.to_json(orient='split', date_format='iso'),
         'trader': df_trader.to_json(orient='split', date_format='iso'),
         'ipo': df_ipo.to_json(orient='split', date_format='iso'),
-        'ipo_subs': df_ipo_subs.to_json(orient='split', date_format='iso'), # 新增
+        'ipo_subs': df_ipo_subs.to_json(orient='split', date_format='iso'),
     }
     return data_store, selected_db, ""
 
@@ -338,41 +326,34 @@ def update_title(db_path):
     Input('db-data-store', 'data')
 )
 def populate_dropdowns_and_sliders(data):
+    # (V4.26 逻辑 - 保持不变)
     if data is None:
-        return ([], [], 1, {}, 1, 1, {}, 1, 1, {}, 1, 1, {}, 1, [], []) # 添加
-
+        return ([], [], 1, {}, 1, 1, {}, 1, 1, {}, 1, 1, {}, 1, [], [])
     df_market = pd.read_json(data['market'], orient='split')
     df_stock = pd.read_json(data['stock'], orient='split')
     df_trader = pd.read_json(data['trader'], orient='split')
     df_ipo = pd.DataFrame()
     if 'ipo' in data and data['ipo']:
         df_ipo = pd.read_json(data['ipo'], orient='split')
-
     stock_options = [{'label': stock, 'value': stock} for stock in df_stock['stock_id'].unique()]
-
     trader_info_df = df_trader[['trader_id', 'trader_type']].drop_duplicates().sort_values('trader_id')
     trader_options = [
         {'label': f"Trader {row.trader_id} ({row.trader_type})", 'value': row.trader_id}
         for row in trader_info_df.itertuples()
     ]
-
     max_day = 1
     if not df_market.empty:
         max_day = int(df_market['day'].max())
     slider_marks = {i: str(i) for i in range(1, max_day + 1) if i == 1 or i % 25 == 0 or i == max_day}
-
-    # 【【修改 V4.26】】
     ipo_records = []
     ipo_stock_options = []
     if not df_ipo.empty:
-        # 格式化
         df_ipo['available_shares'] = df_ipo['available_shares'].apply(format_large_number)
         df_ipo['demand_shares'] = df_ipo['demand_shares'].apply(format_large_number)
         df_ipo['oversubscription_ratio'] = df_ipo['oversubscription_ratio'].apply(lambda x: f"{x:.4f}%")
         df_ipo['ipo_price'] = df_ipo['ipo_price'].apply(format_num)
         ipo_records = df_ipo.to_dict('records')
         ipo_stock_options = [{'label': stock_id, 'value': stock_id} for stock_id in df_ipo['stock_id'].unique()]
-
     return (stock_options, trader_options,
             max_day, slider_marks, max_day,  # Market
             max_day, slider_marks, max_day,  # Stock
@@ -501,10 +482,16 @@ def update_trader_charts_output(selected_trader, data):
         return html.Div("Please select a trader.")
     df_trader = pd.read_json(data['trader'], orient='split')
     df_selected = df_trader[df_trader['trader_id'] == selected_trader]
-    fig_assets = px.line(df_selected, x='day', y=['total_assets', 'cash', 'stock_value'],
+
+    # 【【V4.28 修复】】 添加 'reserved_cash' 到图表
+    fig_assets = px.line(df_selected, x='day', y=['total_assets', 'cash', 'reserved_cash', 'stock_value'],
                          title=f"Trader {selected_trader} - Asset Variation")
     fig_assets.update_layout(xaxis_title="Day", yaxis_title="Value (CNY)")
-    fig_assets.data[0].name, fig_assets.data[1].name, fig_assets.data[2].name = "Total Assets", "Cash", "Stock Value"
+    fig_assets.data[0].name = "Total Assets"
+    fig_assets.data[1].name = "Available Cash"
+    fig_assets.data[2].name = "Reserved Cash (Pending)"
+    fig_assets.data[3].name = "Stock Value"
+
     fig_traits = px.line(df_selected, x='day', y=['risk_tolerance'],
                          title=f"Trader {selected_trader} - Risk Tolerance Variation")
     fig_traits.update_layout(xaxis_title="Day", yaxis_title="Value")
@@ -523,10 +510,21 @@ def update_trader_holdings_output(selected_trader, selected_day, db_path):
     conn = connect_db(db_path)
     if conn is None: return []
     try:
-        cash_query = "SELECT cash FROM trader_log WHERE trader_id = ? AND day = ?"
-        df_cash = pd.read_sql_query(cash_query, conn, params=(int(selected_trader), int(selected_day)))
+        # 【【V4.28 修复】】
+        query = "SELECT cash, reserved_cash, stock_value, total_assets FROM trader_log WHERE trader_id = ? AND day = ?"
+        df_trader_day = pd.read_sql_query(query, conn, params=(int(selected_trader), int(selected_day)))
+
         cash_value = 0.0
-        if not df_cash.empty: cash_value = df_cash.iloc[0]['cash']
+        reserved_cash_value = 0.0
+        stock_value_db = 0.0
+        total_assets = 0.0
+
+        if not df_trader_day.empty:
+            cash_value = df_trader_day.iloc[0]['cash']
+            reserved_cash_value = df_trader_day.iloc[0]['reserved_cash']
+            stock_value_db = df_trader_day.iloc[0]['stock_value']
+            total_assets = df_trader_day.iloc[0]['total_assets']
+
         holdings_query = """
                          SELECT H.stock_id, H.quantity, S.close AS price_at_close
                          FROM holdings_log H
@@ -534,19 +532,26 @@ def update_trader_holdings_output(selected_trader, selected_day, db_path):
                          WHERE H.trader_id = ? AND H.day = ?
                          """
         df_holdings = pd.read_sql_query(holdings_query, conn, params=(int(selected_trader), int(selected_day)))
-        table_rows_data = [{'holding': 'Cash', 'value': f"{cash_value:.2f} CNY", 'quantity': '-'}]
-        total_stock_value = 0.0
+
+        # (V4.28: 我们不再手动计算 stock_value, 我们直接使用 logger 的值)
+
+        # 1. 现金
+        table_rows_data = [
+            {'holding': 'Available Cash', 'value': f"{cash_value:.2f} CNY", 'quantity': '-'},
+            {'holding': 'Reserved Cash (Pending)', 'value': f"{reserved_cash_value:.2f} CNY", 'quantity': '-'}
+        ]
+
+        # 2. 股票
         for row in df_holdings.itertuples():
             stock_value = row.quantity * row.price_at_close
-            total_stock_value += stock_value
             table_rows_data.append({
                 'holding': row.stock_id,
                 'value': f"{stock_value:.2f} CNY",
                 'quantity': f"{row.quantity:.0f} shares"
             })
-        total_assets = cash_value + total_stock_value
+
         summary_alert = dbc.Alert(
-            f"Total Assets: {total_assets:.2f} CNY (Cash: {cash_value:.2f} + Stocks: {total_stock_value:.2f})",
+            f"Total Assets: {total_assets:.2f} CNY (Cash: {cash_value:.2f} + Reserved: {reserved_cash_value:.2f} + Stocks: {stock_value_db:.2f})",
             color="primary", className="mt-4"
         )
         holdings_table = dash_table.DataTable(
@@ -567,7 +572,7 @@ def update_trader_holdings_output(selected_trader, selected_day, db_path):
         if conn: conn.close()
 
 
-# === 6. 代理类型 (Agent Type) Tab 回调 (V4.23) ===
+# === 6. 代理类型 (Agent Type) Tab 回调 ===
 @app.callback(
     Output('holdings-day-display', 'children'),
     Input('holdings-day-slider', 'value')
@@ -575,6 +580,7 @@ def update_trader_holdings_output(selected_trader, selected_day, db_path):
 def update_holdings_day_display(selected_day):
     return f"Selected Day: {selected_day}"
 
+# 【【修改 V4.28】】 重写此回调以显示详细资产
 @app.callback(
     [Output('agent-type-details-output', 'children'),
      Output('agent-type-day-display', 'children')],
@@ -583,40 +589,58 @@ def update_holdings_day_display(selected_day):
     prevent_initial_call=True
 )
 def update_agent_type_details(selected_day, data):
-    # (V4.23 逻辑 - 保持不变)
-    if data is None or selected_day is None: raise PreventUpdate
+    if data is None or selected_day is None:
+        raise PreventUpdate
     df_trader = pd.read_json(data['trader'], orient='split')
     df_day = df_trader[df_trader['day'] == selected_day]
     if df_day.empty:
         return dbc.Alert("No data found for this day.", color="warning"), f"Selected Day: {selected_day}"
+
+    # --- V4.28 修正: 聚合所有需要的列 (Sum 和 Mean) ---
     df_grouped = df_day.groupby('trader_type').agg(
         count=('trader_id', 'count'),
         total_assets_sum=('total_assets', 'sum'),
         cash_sum=('cash', 'sum'),
+        reserved_cash_sum=('reserved_cash', 'sum'), # 新增
         stock_value_sum=('stock_value', 'sum'),
         total_assets_mean=('total_assets', 'mean'),
         cash_mean=('cash', 'mean'),
+        reserved_cash_mean=('reserved_cash', 'mean'), # 新增
         stock_value_mean=('stock_value', 'mean')
     ).reset_index()
+
     table_header = [html.Thead(html.Tr([
-        html.Th("Agent Type"), html.Th("Count"),
-        html.Th("Total Assets (Sum)"), html.Th("Cash (Sum)"), html.Th("Stock Value (Sum)"),
-        html.Th("Avg Total Assets"), html.Th("Avg Cash"), html.Th("Avg Stock Value"),
+        html.Th("Agent Type"),
+        html.Th("Count"),
+        html.Th("Total Assets (Sum)"),
+        html.Th("Cash (Sum)"),
+        html.Th("Reserved (Sum)"), # 新增
+        html.Th("Stock Value (Sum)"),
+        html.Th("Avg Total Assets"),
+        html.Th("Avg Cash"),
+        html.Th("Avg Reserved"), # 新增
+        html.Th("Avg Stock Value"),
     ]))]
+
     table_body = [html.Tbody([
         html.Tr([
-            html.Td(row.trader_type), html.Td(f"{row.count}"),
+            html.Td(row.trader_type),
+            html.Td(f"{row.count}"),
             html.Td(format_large_number(row.total_assets_sum)),
             html.Td(format_large_number(row.cash_sum)),
+            html.Td(format_large_number(row.reserved_cash_sum)), # 新增
             html.Td(format_large_number(row.stock_value_sum)),
             html.Td(format_large_number(row.total_assets_mean)),
             html.Td(format_large_number(row.cash_mean)),
+            html.Td(format_large_number(row.reserved_cash_mean)), # 新增
             html.Td(format_large_number(row.stock_value_mean)),
         ]) for row in df_grouped.itertuples()
     ])]
+
     details_layout = dbc.Table(table_header + table_body,
                                bordered=True, striped=True, hover=True,
                                size='sm', responsive=True)
+
     return details_layout, f"Selected Day: {selected_day}"
 
 @app.callback(
@@ -652,7 +676,7 @@ def update_agent_type_params_chart(data):
     fig.update_layout(xaxis_title="Day")
     return fig
 
-# === 7. 【【新增 V4.26】】 IPO Tab 回调 ===
+# === 7. 【【V4.26】】 IPO Tab 回调 ===
 @app.callback(
     Output('ipo-subscribers-table', 'data'),
     Input('ipo-stock-dropdown', 'value'),
@@ -665,14 +689,11 @@ def update_ipo_subscribers_table(selected_stock, data):
     df_ipo_subs = pd.read_json(data['ipo_subs'], orient='split')
     df_trader_info = pd.read_json(data['trader'], orient='split')
 
-    # 筛选
     df_selected = df_ipo_subs[df_ipo_subs['stock_id'] == selected_stock]
 
-    # (V4.26: 合并 trader_type)
     df_trader_info = df_trader_info[['trader_id', 'trader_type']].drop_duplicates()
     df_merged = pd.merge(df_selected, df_trader_info, on='trader_id')
 
-    # 格式化
     df_merged['demand_shares'] = df_merged['demand_shares'].apply(format_large_number)
     df_merged['allocated_shares'] = df_merged['allocated_shares'].apply(format_large_number)
 
@@ -680,6 +701,6 @@ def update_ipo_subscribers_table(selected_stock, data):
 
 # --- 运行 App ---
 if __name__ == '__main__':
-    print("Dash app starting (V4.26). Open http://127.0.0.1:8050/ in your browser.")
+    print("Dash app starting (V4.28). Open http://127.0.0.1:8050/ in your browser.")
     print("Please use the UI controls to load a database.")
     app.run(debug=True)

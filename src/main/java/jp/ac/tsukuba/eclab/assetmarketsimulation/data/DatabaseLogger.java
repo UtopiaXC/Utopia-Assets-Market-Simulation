@@ -1,25 +1,19 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.data;
 
-// MASON
+// (Imports)
 import sim.engine.SimState;
 import sim.engine.Steppable;
 import sim.util.Bag;
-
-// Java SQL
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.Map;
-
-// I/O
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.io.IOException;
 import java.io.File;
-
-// 本项目
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
@@ -35,9 +29,9 @@ public class DatabaseLogger implements Steppable {
     private PreparedStatement psMarketLog;
     private PreparedStatement psHoldingsLog;
 
-    // 【【修改 V4.26】】
+    // (V4.26)
     private PreparedStatement psIPOLog;
-    private PreparedStatement psIPOSubscriptionLog; // 新增
+    private PreparedStatement psIPOSubscriptionLog;
 
     private Bag traders;
     private Bag stocks;
@@ -46,17 +40,10 @@ public class DatabaseLogger implements Steppable {
     public DatabaseLogger(long seed) {
         long timestamp = System.currentTimeMillis();
         String dbName = String.format("SimulationResult-%d.db", timestamp);
-
         String outputDir = "output";
-        try {
-            Files.createDirectories(Paths.get(outputDir));
-        } catch (IOException e) {
-            System.err.println("Failed to create output directory: " + e.getMessage());
-            e.printStackTrace();
-        }
-
+        try { Files.createDirectories(Paths.get(outputDir)); }
+        catch (IOException e) { e.printStackTrace(); }
         String dbPath = outputDir + File.separator + dbName;
-
         try {
             Class.forName("org.sqlite.JDBC");
             conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
@@ -76,49 +63,42 @@ public class DatabaseLogger implements Steppable {
         stmt.execute("CREATE TABLE market_log (day INT PRIMARY KEY, open REAL, high REAL, low REAL, close REAL, volume REAL, turnover REAL, total_market_cap REAL, amplitude REAL, turnover_rate REAL);");
         stmt.execute("DROP TABLE IF EXISTS stock_log;");
         stmt.execute("CREATE TABLE stock_log (day INT, stock_id VARCHAR(10), sector TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL, turnover REAL, pb_ratio REAL, pe_ttm REAL, eps REAL, net_assets REAL, total_market_cap REAL, liquid_market_cap REAL, turnover_rate REAL, amplitude REAL, pe_dynamic REAL, total_shares REAL, liquid_shares REAL, high_52w REAL, low_52w REAL, pe_static REAL, PRIMARY KEY (day, stock_id));");
-        stmt.execute("DROP TABLE IF EXISTS trader_log;");
-        stmt.execute("CREATE TABLE trader_log (day INT, trader_id INT, trader_type TEXT, risk_tolerance REAL, max_stocks INT, cash REAL, stock_value REAL, total_assets REAL, PRIMARY KEY (day, trader_id));");
         stmt.execute("DROP TABLE IF EXISTS holdings_log;");
         stmt.execute("CREATE TABLE holdings_log (day INT, trader_id INT, stock_id VARCHAR(10), quantity REAL, PRIMARY KEY (day, trader_id, stock_id));");
 
-        // 【【修改 V4.26】】
+        // (V4.26 保持不变)
         stmt.execute("DROP TABLE IF EXISTS ipo_log;");
-        stmt.execute("CREATE TABLE ipo_log (" +
-                "stock_id VARCHAR(10) PRIMARY KEY, " +
-                "ipo_price REAL, " + // 新增
-                "available_shares REAL, " +
-                "demand_shares REAL, " +
-                "oversubscription_ratio REAL" +
-                ");");
-
-        // 【【新增 V4.26】】 (用于“参与列表”和“中签列表”)
+        stmt.execute("CREATE TABLE ipo_log (stock_id VARCHAR(10) PRIMARY KEY, ipo_price REAL, available_shares REAL, demand_shares REAL, oversubscription_ratio REAL);");
         stmt.execute("DROP TABLE IF EXISTS ipo_subscription_log;");
-        stmt.execute("CREATE TABLE ipo_subscription_log (" +
-                "stock_id VARCHAR(10), " +
-                "trader_id INT, " +
-                "demand_shares REAL, " +
-                "allocated_shares REAL, " + // 中签
-                "PRIMARY KEY (stock_id, trader_id)" +
-                ");");
+        stmt.execute("CREATE TABLE ipo_subscription_log (stock_id VARCHAR(10), trader_id INT, demand_shares REAL, allocated_shares REAL, PRIMARY KEY (stock_id, trader_id));");
 
+        // 【【修改 V4.28】】 新增 reserved_cash
+        stmt.execute("DROP TABLE IF EXISTS trader_log;");
+        stmt.execute("CREATE TABLE trader_log (" +
+                "day INT, trader_id INT, trader_type TEXT, " +
+                "risk_tolerance REAL, " +
+                "max_stocks INT, " +
+                "cash REAL, " + // 可用现金
+                "reserved_cash REAL, " + // 冻结现金
+                "stock_value REAL, " +
+                "total_assets REAL, " + // (cash + reserved + stock_value)
+                "PRIMARY KEY (day, trader_id)" +
+                ");");
 
         psMarketLog = conn.prepareStatement("INSERT INTO market_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
         psStockLog = conn.prepareStatement("INSERT INTO stock_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
-        psTraderLog = conn.prepareStatement("INSERT INTO trader_log VALUES (?, ?, ?, ?, ?, ?, ?, ?);");
         psHoldingsLog = conn.prepareStatement("INSERT INTO holdings_log VALUES (?, ?, ?, ?);");
-
-        // 【【修改 V4.26】】
         psIPOLog = conn.prepareStatement("INSERT INTO ipo_log VALUES (?, ?, ?, ?, ?);");
         psIPOSubscriptionLog = conn.prepareStatement("INSERT INTO ipo_subscription_log VALUES (?, ?, ?, ?);");
+
+        // 【【修改 V4.28】】 9 个字段
+        psTraderLog = conn.prepareStatement("INSERT INTO trader_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);");
 
         conn.setAutoCommit(false);
         stmt.close();
     }
 
-    // 【【修改 V4.26】】
-    /**
-     * 记录 IPO 摘要
-     */
+    // (V4.26 IPO 方法 - 保持不变)
     public void logIPO(String stockId, double ipoPrice, double available, double demand, double ratio) {
         if (conn == null) return;
         try {
@@ -128,15 +108,8 @@ public class DatabaseLogger implements Steppable {
             psIPOLog.setDouble(4, demand);
             psIPOLog.setDouble(5, ratio);
             psIPOLog.addBatch();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        } catch (SQLException e) { e.printStackTrace(); }
     }
-
-    /**
-     * 【【新增 V4.26】】
-     * 记录每一个经纪人的认购/中签
-     */
     public void logIPOSubscription(String stockId, int traderId, double demandShares, double allocatedShares) {
         if (conn == null) return;
         try {
@@ -145,24 +118,15 @@ public class DatabaseLogger implements Steppable {
             psIPOSubscriptionLog.setDouble(3, demandShares);
             psIPOSubscriptionLog.setDouble(4, allocatedShares);
             psIPOSubscriptionLog.addBatch();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        } catch (SQLException e) { e.printStackTrace(); }
     }
-
-    /**
-     * 【【修改 V4.26】】
-     * 在 StockMarketSim.start() 的 IPO 阶段*之后*调用
-     */
     public void commitIPO() {
         if (conn == null) return;
         try {
             psIPOLog.executeBatch();
             psIPOSubscriptionLog.executeBatch();
             conn.commit();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        } catch (SQLException e) { e.printStackTrace(); }
     }
 
     public void setup(StockMarketSim sim) {
@@ -172,17 +136,16 @@ public class DatabaseLogger implements Steppable {
     }
 
     /**
-     * 【【V4.26 关键修复】】
-     * 修复了 V4.25 中导致数据丢失的 "..." 注释 Bug。
-     * 现在已填写所有 setXXX() 调用。
+     * 【【V4.28 关键修复】】
+     * 1. 修复了 V4.25 中导致数据丢失的 "..." 注释 Bug。
+     * 2. 增加了对 'reservedCash' 的日志记录。
+     * 3. 修复了 'total_assets' 的计算。
      */
     @Override
     public void step(SimState state) {
         if (conn == null || traders == null || stocks == null) return;
-
         int day = market.getCurrentDay();
         if (day == 0) return;
-
         if (state.schedule.getSteps() % market.STEPS_PER_DAY == 0) {
             System.out.println("DBLogger: Logging Day " + day);
         }
@@ -193,7 +156,7 @@ public class DatabaseLogger implements Steppable {
             psMarketLog.setDouble(2, market.indexOpen);
             psMarketLog.setDouble(3, market.indexHigh);
             psMarketLog.setDouble(4, market.indexLow);
-            psMarketLog.setDouble(5, market.marketIndex); // Close
+            psMarketLog.setDouble(5, market.marketIndex);
             psMarketLog.setDouble(6, market.totalVolumeThisDay);
             psMarketLog.setDouble(7, market.totalTurnoverThisDay);
             psMarketLog.setDouble(8, market.marketTotalMarketCap);
@@ -210,7 +173,7 @@ public class DatabaseLogger implements Steppable {
                 psStockLog.setDouble(4, s.open);
                 psStockLog.setDouble(5, s.high);
                 psStockLog.setDouble(6, s.low);
-                psStockLog.setDouble(7, s.currentPrice); // Close
+                psStockLog.setDouble(7, s.currentPrice);
                 psStockLog.setDouble(8, s.volumeThisDay);
                 psStockLog.setDouble(9, s.turnoverThisDay);
                 psStockLog.setDouble(10, s.pbRatio);
@@ -235,6 +198,8 @@ public class DatabaseLogger implements Steppable {
                 BaseTrader t = (BaseTrader) traders.get(i);
                 double stockValue = t.portfolio.getTotalStockValue();
                 double cash = t.portfolio.cash;
+                double reservedCash = t.portfolio.reservedCash; // 【【V4.28 新增】】
+                double totalAssets = cash + reservedCash + stockValue; // 【【V4.28 修复】】
 
                 psTraderLog.setInt(1, day);
                 psTraderLog.setInt(2, t.traderId);
@@ -242,8 +207,9 @@ public class DatabaseLogger implements Steppable {
                 psTraderLog.setDouble(4, t.riskTolerance);
                 psTraderLog.setInt(5, t.maxStocks);
                 psTraderLog.setDouble(6, cash);
-                psTraderLog.setDouble(7, stockValue);
-                psTraderLog.setDouble(8, cash + stockValue);
+                psTraderLog.setDouble(7, reservedCash); // 【【V4.28 新增】】
+                psTraderLog.setDouble(8, stockValue);
+                psTraderLog.setDouble(9, totalAssets); // 【【V4.28 修复】】
                 psTraderLog.addBatch();
 
                 for (Map.Entry<Stock, Position> entry : t.portfolio.getPositions().entrySet()) {
@@ -263,7 +229,6 @@ public class DatabaseLogger implements Steppable {
             conn.commit();
 
         } catch (SQLException e) {
-            // (这是 V4.25 发生错误的地方)
             System.err.println("CRITICAL LOGGER ERROR during step(): " + e.getMessage());
             e.printStackTrace();
             try { conn.rollback(); } catch (SQLException ex) { ex.printStackTrace(); }
@@ -276,8 +241,6 @@ public class DatabaseLogger implements Steppable {
             if (psStockLog != null) { psStockLog.executeBatch(); psStockLog.close(); }
             if (psTraderLog != null) { psTraderLog.executeBatch(); psTraderLog.close(); }
             if (psHoldingsLog != null) { psHoldingsLog.executeBatch(); psHoldingsLog.close(); }
-
-            // 【【修改 V4.26】】
             if (psIPOLog != null) { psIPOLog.close(); }
             if (psIPOSubscriptionLog != null) { psIPOSubscriptionLog.close(); }
 

@@ -10,7 +10,7 @@ public final class Config {
     private Config() {}
 
     // 1. 市场 (Market) 参数
-    public static final int MARKET_NUM_STOCKS = 100;
+    public static final int MARKET_NUM_STOCKS = 20;
     public static final int MARKET_SIMULATION_DAYS = 250;
     public static final double MARKET_INDEX_BASE = 3000.0;
 
@@ -24,7 +24,7 @@ public final class Config {
     public static final double[] STOCK_IPO_PRICE = {2.0, 1.0, 1.0, 10.0};
     public static final double[] STOCK_IPO_NET_ASSETS = {1.0, 0.5, 0.5, 5.0};
     public static final double[] STOCK_IPO_EPS = {0.1, 0.1, -0.5, 1.0};
-    public static final double[] STOCK_IPO_LIQUID_SHARES = {2.5e8, 1.0e8, 1.0e8, 5.0e8};
+    public static final double[] STOCK_IPO_LIQUID_SHARES = {2.5e7, 1.0e7, 1.0e7, 5.0e7};
 
     public static final double STOCK_FUNDAMENTALS_GROWTH_RATE_MIN = -0.05;
     public static final double STOCK_FUNDAMENTALS_GROWTH_RATE_MAX = 0.15;
