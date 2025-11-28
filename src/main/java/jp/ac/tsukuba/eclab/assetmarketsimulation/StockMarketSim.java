@@ -1,7 +1,6 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation;
 
 // MASON
-import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.InterventionService;
 import sim.engine.SimState;
 import sim.engine.Steppable;
 import sim.util.Bag;
@@ -14,8 +13,10 @@ import java.util.Random;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.data.DatabaseLogger;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketScenario; // 导入接口
-import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.BaselineScenario; // 导入默认实现
+// 注意：请确保 InterventionService 的包路径与实际文件位置一致
+import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.InterventionService;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketScenario;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.BaselineScenario;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.ValuationService;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.InstitutionalTrader;
@@ -27,11 +28,15 @@ public class StockMarketSim extends SimState {
     public Bag traders = new Bag();
     public Bag stocks = new Bag();
     public Market market;
+
+    // 【关键修复】 这里千万不要赋值！不要写 = new DatabaseLogger(...)
+    // 保持为 null，直到 start() 被调用
     public DatabaseLogger dbLogger;
+
     public ValuationService valuation;
     public InterventionService intervention;
 
-    // 【新增 V4.33】 当前激活的剧本
+    // 当前激活的剧本
     private MarketScenario activeScenario;
 
     public int numStocks;
@@ -47,8 +52,7 @@ public class StockMarketSim extends SimState {
     }
 
     /**
-     * 【新增 V4.33】 设置要运行的剧本
-     * 可以在 main 方法中调用此方法来切换不同的实验场景
+     * 设置要运行的剧本
      */
     public void setScenario(MarketScenario scenario) {
         this.activeScenario = scenario;
@@ -58,29 +62,49 @@ public class StockMarketSim extends SimState {
     public void start() {
         super.start();
 
+        // 清理旧数据
         traders.clear();
         stocks.clear();
 
+        // 【关键修复】 数据库初始化逻辑
+        // 1. 如果存在旧的 Logger (例如 UI 界面点击了 Stop 后又点击 Start)，先关闭它
+        if (dbLogger != null) {
+            dbLogger.close();
+            dbLogger = null;
+        }
+        // 2. 只有在模拟真正开始时，才创建新的数据库文件
         dbLogger = new DatabaseLogger(this.seed());
+
+        // 初始化服务
         valuation = new ValuationService();
         intervention = new InterventionService(this);
 
+        // 初始化股票
         for (int i = 0; i < numStocks; i++) {
             stocks.add(new Stock(i));
         }
 
+        // 创建 Agent
         createAgents();
+
+        // 初始分配 (替代 IPO)
         distributeInitialShares();
 
+        // 创建市场
         market = new Market();
         market.setup(this);
+
+        // 设置 Logger (准备 Statement)
         dbLogger.setup(this);
 
+        // 安排调度: Traders
         for (int i = 0; i < traders.size(); i++) {
             schedule.scheduleRepeating((Steppable)traders.get(i), 1, 1.0);
         }
+        // 安排调度: Market
         schedule.scheduleRepeating(market, 2, 1.0);
 
+        // 安排调度: Daily Console Logger
         Steppable dailyLogger = new Steppable() {
             private long dayStartTime;
             public void step(SimState state) {
@@ -99,23 +123,28 @@ public class StockMarketSim extends SimState {
             }
         };
         schedule.scheduleRepeating(dailyLogger, 3, 1.0);
+
+        // 安排调度: Database Logger (每天记录一次)
         schedule.scheduleRepeating(dbLogger, 4, market.STEPS_PER_DAY);
 
+        // 安排模拟停止
         long totalSteps = (long) simulationDays * market.STEPS_PER_DAY;
         Steppable finisher = new Steppable() {
             public void step(SimState state) {
                 System.out.println("--- Simulation finished after " + simulationDays + " days ---");
-                dbLogger.step(state);
-                dbLogger.close();
+                dbLogger.step(state); // 记录最后一步
+                dbLogger.close();     // 关闭连接
+                dbLogger = null;      // 置空
                 state.finish();
             }
         };
         schedule.scheduleOnce(totalSteps, 5, finisher);
 
         // ==========================================
-        // 【修改 V4.33】 应用选定的剧本
+        // 应用选定的剧本
         // ==========================================
         if (this.activeScenario != null) {
+            System.out.println("Applying Scenario: " + this.activeScenario.getName());
             this.activeScenario.apply(this);
         }
     }
@@ -181,6 +210,7 @@ public class StockMarketSim extends SimState {
 
             Collections.shuffle(agentPool, new Random(this.seed() + i));
 
+            // 每批分配 0.5%
             double batchSize = Math.max(100, Math.floor(stock.liquidShares * 0.005));
             batchSize = Math.floor(batchSize / 100) * 100;
 
@@ -191,6 +221,7 @@ public class StockMarketSim extends SimState {
                 if (agentIndex >= agentPool.size()) {
                     agentIndex = 0;
                     loopCount++;
+                    // 防止死循环：如果循环3次还没分完，说明大家都没钱了
                     if (loopCount > 3) {
                         System.err.println("Warning: Could not distribute all shares for " + stock.stockId + ". Agents ran out of cash/slots.");
                         break;
@@ -200,24 +231,33 @@ public class StockMarketSim extends SimState {
                 BaseTrader agent = agentPool.get(agentIndex);
                 agentIndex++;
 
+                // 1. 持仓上限检查
                 boolean hasStock = agent.portfolio.getPositions().containsKey(stock);
                 if (!hasStock && agent.portfolio.getPositions().size() >= agent.maxStocks) {
                     continue;
                 }
 
+                // 2. 现金缓冲检查 (Cash Buffer)
+                // 只有当分配后剩余现金 > 总资产的 20% 时，才允许分配。
+                double currentAssets = agent.portfolio.getTotalAssets();
+                double allocationCost = batchSize * price;
+
+                if (agent.portfolio.cash < allocationCost ||
+                        (agent.portfolio.cash - allocationCost) < (currentAssets * 0.20)) {
+                    continue;
+                }
+
                 double allocateQty = Math.min(batchSize, remainingShares);
+
+                // 执行分配 (initializePosition 内部会扣钱)
                 boolean success = agent.portfolio.initializePosition(stock, allocateQty, price);
 
                 if (success) {
                     remainingShares -= allocateQty;
                 } else {
-                    double maxAffordable = Math.floor((agent.portfolio.cash / price) / 100) * 100;
-                    if (maxAffordable > 0 && maxAffordable < allocateQty) {
-                        allocateQty = Math.min(maxAffordable, remainingShares);
-                        if (agent.portfolio.initializePosition(stock, allocateQty, price)) {
-                            remainingShares -= allocateQty;
-                        }
-                    }
+                    // 如果标准包买不起，尝试买能买得起的部分 (且符合现金缓冲)
+                    // 这里简化逻辑：如果因为现金不足失败，我们就不强行塞小额了，直接跳过，
+                    // 留给下一个更有钱的 Agent
                 }
             }
         }
@@ -225,15 +265,6 @@ public class StockMarketSim extends SimState {
     }
 
     public static void main(String[] args) {
-        // 在这里，你可以通过修改代码来切换不同的剧本
-        // 例如:
-         StockMarketSim sim = new StockMarketSim(System.currentTimeMillis());
-         sim.setScenario(new BaselineScenario());
-         sim.start();
-
-        // MASON 的标准启动方式 (doLoop) 会自动调用构造函数
-        // 如果你需要通过命令行参数控制剧本，可以在这里解析 args
-
         doLoop(StockMarketSim.class, args);
         System.exit(0);
     }

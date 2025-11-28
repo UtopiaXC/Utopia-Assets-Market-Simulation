@@ -7,7 +7,7 @@ public final class Config {
     private Config() {}
 
     // 1. 市场 (Market) 参数
-    public static final int MARKET_NUM_STOCKS = 100;
+    public static final int MARKET_NUM_STOCKS = 50;
     public static final int MARKET_SIMULATION_DAYS = 1000;
     public static final double MARKET_INDEX_BASE = 3000.0;
     public static final double MARKET_PRICE_LIMIT_RATIO = 0.10;
