@@ -1,34 +1,51 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model;
 
-import jp.ac.tsukuba.eclab.assetmarketsimulation.Config; // 【修改】导入 Config
+import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class ValuationService {
 
     private final double pbMultiplier;
     private final double peMultiplier;
-    private final double sectorBonusTech;
-    private final double sectorBonusHealthcare;
-    private final double sectorBonusConsumer;
-    private final double sectorBonusFinance;
-    private final double sectorBonusIndustry;
 
-    // 【修改】构造函数不再需要 ConfigLoader
+    // 静态配置的板块加成
+    private final Map<Sector, Double> baseSectorBonus;
+
+    // 【新增】动态的情绪乘数 (默认为 1.0)
+    private Map<Sector, Double> dynamicSentimentMultipliers;
+
     public ValuationService() {
-        // 【修改】直接从 Config 类读取静态常量
         this.pbMultiplier = Config.VALUATION_PB_MULTIPLIER;
         this.peMultiplier = Config.VALUATION_PE_MULTIPLIER;
-        this.sectorBonusTech = Config.VALUATION_SECTOR_TECH;
-        this.sectorBonusHealthcare = Config.VALUATION_SECTOR_HEALTHCARE;
-        this.sectorBonusConsumer = Config.VALUATION_SECTOR_CONSUMER;
-        this.sectorBonusFinance = Config.VALUATION_SECTOR_FINANCE;
-        this.sectorBonusIndustry = Config.VALUATION_SECTOR_INDUSTRY;
+
+        this.baseSectorBonus = new HashMap<>();
+        this.baseSectorBonus.put(Sector.TECH, Config.VALUATION_SECTOR_TECH);
+        this.baseSectorBonus.put(Sector.HEALTHCARE, Config.VALUATION_SECTOR_HEALTHCARE);
+        this.baseSectorBonus.put(Sector.CONSUMER, Config.VALUATION_SECTOR_CONSUMER);
+        this.baseSectorBonus.put(Sector.FINANCE, Config.VALUATION_SECTOR_FINANCE);
+        this.baseSectorBonus.put(Sector.INDUSTRY, Config.VALUATION_SECTOR_INDUSTRY);
+
+        // 初始化动态情绪
+        this.dynamicSentimentMultipliers = new HashMap<>();
+        resetSectorSentiment();
+    }
+
+    // 【新增】设置动态情绪
+    public void setSectorSentiment(Sector sector, double multiplier) {
+        this.dynamicSentimentMultipliers.put(sector, multiplier);
+    }
+
+    public void resetSectorSentiment() {
+        for (Sector s : Sector.values()) {
+            this.dynamicSentimentMultipliers.put(s, 1.0);
+        }
     }
 
     public double calculateFundamentalValue(Stock stock) {
-
-        // 【修改】使用配置的乘数 (保持不变，因为它们是 final 成员变量)
         double pbValue = stock.netAssetsPerShare * pbMultiplier;
 
         double peValue = 0;
@@ -38,21 +55,14 @@ public class ValuationService {
 
         double baseValue = (peValue > 0) ? (pbValue + peValue) / 2.0 : pbValue;
         double growthBonus = 1.0 + stock.earningsGrowth;
-        double sectorBonus = getSectorBonus(stock.sector);
 
-        return baseValue * growthBonus * sectorBonus;
+        // 【修改】综合奖赏 = 静态配置 * 动态情绪
+        double totalSectorBonus = getBaseSectorBonus(stock.sector) * dynamicSentimentMultipliers.get(stock.sector);
+
+        return baseValue * growthBonus * totalSectorBonus;
     }
 
-    private double getSectorBonus(Sector sector) {
-        // 【修改】使用配置的乘数 (保持不变，因为它们是 final 成员变量)
-        switch (sector) {
-            case TECH:       return sectorBonusTech;
-            case HEALTHCARE: return sectorBonusHealthcare;
-            case CONSUMER:   return sectorBonusConsumer;
-            case FINANCE:    return sectorBonusFinance;
-            case INDUSTRY:
-            default:
-                return sectorBonusIndustry;
-        }
+    private double getBaseSectorBonus(Sector sector) {
+        return baseSectorBonus.getOrDefault(sector, 1.0);
     }
 }
