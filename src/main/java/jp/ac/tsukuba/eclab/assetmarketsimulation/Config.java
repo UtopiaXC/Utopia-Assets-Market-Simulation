@@ -34,6 +34,7 @@ public final class Config {
     public static final double STOCK_FUNDAMENTALS_EPS_VOLATILITY = 0.15;
     public static final double STOCK_FUNDAMENTALS_RETAINED_EARNINGS_RATIO = 0.70;
 
+
     // 经济体参数
     // Economy Config
     public static final double ECONOMY_TOTAL_CAPITAL_POOL = 3.5e11;

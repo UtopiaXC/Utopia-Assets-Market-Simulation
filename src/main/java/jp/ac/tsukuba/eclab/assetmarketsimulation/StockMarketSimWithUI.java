@@ -1,6 +1,5 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation;
 
-// MASON
 import sim.engine.SimState;
 import sim.engine.Steppable;
 import sim.engine.Schedule;
@@ -8,14 +7,10 @@ import sim.display.Controller;
 import sim.display.Display2D;
 import sim.display.GUIState;
 import sim.display.Console;
-
-// JFreeChart
 import sim.util.media.chart.TimeSeriesChartGenerator;
 import org.jfree.data.xy.XYSeries;
 import javax.swing.JFrame;
 
-// 本项目
-import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 
 
 public class StockMarketSimWithUI extends GUIState {
@@ -34,11 +29,8 @@ public class StockMarketSimWithUI extends GUIState {
         super(new StockMarketSim(System.currentTimeMillis()));
     }
 
-    /**
-     * 【修改】 标题改为英文
-     */
     public static String getName() {
-        return "Stock Market ABM (5000 Agents)";
+        return "Stock Market ABM";
     }
 
     @Override
@@ -61,7 +53,7 @@ public class StockMarketSimWithUI extends GUIState {
         }
 
         marketChart.removeAllSeries();
-        marketIndexSeries = new XYSeries("Market Index"); // 【修改】图例改为英文
+        marketIndexSeries = new XYSeries("Market Index");
         marketChart.addSeries(marketIndexSeries, null);
 
         state.schedule.scheduleRepeating(new Steppable() {
@@ -79,7 +71,7 @@ public class StockMarketSimWithUI extends GUIState {
                     }
                 }
             }
-        }, 3, 1.0); // (注意：这个 3 是 MASON UI 的优先级，与我们下一步在 headless 中添加的 3 无关)
+        }, 3, 1.0);
     }
 
     @Override
@@ -94,14 +86,11 @@ public class StockMarketSimWithUI extends GUIState {
         initCharts();
     }
 
-    /**
-     * 【修改】 图表标题和坐标轴改为英文
-     */
     private void initCharts() {
         marketChart = new TimeSeriesChartGenerator();
         marketChart.setTitle("Market Index (Liquid Market Cap Weighted)");
         marketChart.setYAxisLabel("Index Points");
-        marketChart.setXAxisLabel("Time (Steps / 15 min)"); // (旧："时间 (步 / 15分钟)")
+        marketChart.setXAxisLabel("Time (Steps / 15 min)");
 
         JFrame chartFrame = marketChart.createFrame();
         chartFrame.pack();
