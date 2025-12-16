@@ -51,6 +51,9 @@ public class Market implements Steppable {
     private Map<Stock, OrderBook> allOrderBooks;
     private Map<Stock, ArrayList<Double>> priceHistories;
 
+    // 【新增 V4.33】 市场指数历史，用于计算 FOMO
+    private ArrayList<Double> marketIndexHistory = new ArrayList<>();
+
     private long currentStep = 0;
 
     public final int STEPS_PER_DAY;
@@ -79,6 +82,7 @@ public class Market implements Steppable {
     public Market() {
         this.allOrderBooks = new HashMap<>();
         this.priceHistories = new HashMap<>();
+        this.marketIndexHistory = new ArrayList<>();
 
         this.STEPS_PER_DAY = Config.MARKET_STEPS_PER_DAY;
         this.LUNCH_BREAK_START = Config.MARKET_LUNCH_BREAK_START;
@@ -110,6 +114,9 @@ public class Market implements Steppable {
         this.indexOpen = INDEX_BASE;
         this.indexHigh = INDEX_BASE;
         this.indexLow = INDEX_BASE;
+
+        // 初始化指数历史
+        this.marketIndexHistory.add(INDEX_BASE);
     }
 
     public int getCurrentDay() {
@@ -121,32 +128,22 @@ public class Market implements Steppable {
         return (stepInDay < LUNCH_BREAK_START) || (stepInDay >= LUNCH_BREAK_END);
     }
 
-    // 【修改】提交买单：增加涨跌停检查
     public synchronized void submitBuyOrder(BaseTrader trader, Stock stock, double quantity, double price) {
         if (!isTradingHours()) return;
-
-        // 涨跌停检查：如果挂单价超过 LimitUp 或低于 LimitDown，则拒绝
-        // (通常买单只关心 limitUp, 但为了一致性我们检查范围)
         if (price > stock.limitUp || price < stock.limitDown) {
-            // System.out.println("Buy Order Rejected: Price " + price + " out of limits [" + stock.limitDown + ", " + stock.limitUp + "]");
             return;
         }
-
         OrderBook ob = allOrderBooks.get(stock);
         if (ob != null) {
             ob.buyOrders.add(new Order(trader, stock, quantity, price, currentStep));
         }
     }
 
-    // 【修改】提交卖单：增加涨跌停检查
     public synchronized void submitSellOrder(BaseTrader trader, Stock stock, double quantity, double price) {
         if (!isTradingHours()) return;
-
         if (price > stock.limitUp || price < stock.limitDown) {
-            // System.out.println("Sell Order Rejected: Price " + price + " out of limits [" + stock.limitDown + ", " + stock.limitUp + "]");
             return;
         }
-
         OrderBook ob = allOrderBooks.get(stock);
         if (ob != null) {
             ob.sellOrders.add(new Order(trader, stock, quantity, price, currentStep));
@@ -192,8 +189,6 @@ public class Market implements Steppable {
 
             for (int i = 0; i < stocksBag.size(); i++) {
                 Stock s = (Stock) stocksBag.get(i);
-
-                // 【修改】先更新涨跌停板，再重置 OHLC
                 s.updateLimits();
                 s.resetDailyOHLC();
             }
@@ -227,8 +222,6 @@ public class Market implements Steppable {
                 if (bestBuy.price >= bestSell.price) {
                     double tradePrice = (bestBuy.timestamp < bestSell.timestamp) ? bestBuy.price : bestSell.price;
 
-                    // 【安全检查】虽然订单提交时检查了，但成交价也再次确认在 limit 内
-                    // (防止极端的边界情况)
                     if (tradePrice > stock.limitUp) tradePrice = stock.limitUp;
                     if (tradePrice < stock.limitDown) tradePrice = stock.limitDown;
 
@@ -297,8 +290,14 @@ public class Market implements Steppable {
         }
 
         if (currentStep % STEPS_PER_DAY == STEPS_PER_DAY - 1) {
+            // 记录指数历史
+            this.marketIndexHistory.add(this.marketIndex);
+
             for (int i = 0; i < model.traders.size(); i++) {
-                ((BaseTrader) model.traders.get(i)).mutateTraits(state);
+                Object obj = model.traders.get(i);
+                if (obj instanceof BaseTrader) {
+                    ((BaseTrader) obj).mutateTraits(state);
+                }
             }
             for (int i = 0; i < stocksBag.size(); i++) {
                 Stock s = (Stock) stocksBag.get(i);
@@ -307,7 +306,10 @@ public class Market implements Steppable {
             }
             System.out.println("Market: Executing T+1 end-of-day settlement for Day " + getCurrentDay() + "...");
             for (int i = 0; i < model.traders.size(); i++) {
-                ((BaseTrader) model.traders.get(i)).portfolio.settleDay();
+                Object obj = model.traders.get(i);
+                if (obj instanceof BaseTrader) {
+                    ((BaseTrader) obj).portfolio.settleDay();
+                }
             }
         }
     }
@@ -324,5 +326,18 @@ public class Market implements Steppable {
             sum += history.get(i);
         }
         return sum / actualLookback;
+    }
+
+    // 【新增 V4.33】 获取近期市场回报率
+    public double getRecentReturn(int lookbackDays) {
+        if (marketIndexHistory.isEmpty()) return 0.0;
+        int currentIdx = marketIndexHistory.size() - 1;
+        int pastIdx = Math.max(0, currentIdx - lookbackDays);
+
+        double currentVal = marketIndexHistory.get(currentIdx);
+        double pastVal = marketIndexHistory.get(pastIdx);
+
+        if (pastVal <= 0) return 0.0;
+        return (currentVal - pastVal) / pastVal;
     }
 }

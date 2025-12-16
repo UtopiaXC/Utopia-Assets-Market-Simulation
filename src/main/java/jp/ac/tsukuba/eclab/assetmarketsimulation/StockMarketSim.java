@@ -6,6 +6,7 @@ import sim.engine.Steppable;
 import sim.util.Bag;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 
@@ -13,7 +14,6 @@ import java.util.Random;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.data.DatabaseLogger;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
-// 注意：请确保 InterventionService 的包路径与实际文件位置一致
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.InterventionService;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketScenario;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.BaselineScenario;
@@ -29,8 +29,6 @@ public class StockMarketSim extends SimState {
     public Bag stocks = new Bag();
     public Market market;
 
-    // 【关键修复】 这里千万不要赋值！不要写 = new DatabaseLogger(...)
-    // 保持为 null，直到 start() 被调用
     public DatabaseLogger dbLogger;
 
     public ValuationService valuation;
@@ -42,18 +40,16 @@ public class StockMarketSim extends SimState {
     public int numStocks;
     public int simulationDays;
 
+    // 【新增 V4.33】 社会公共资金池 (Social Wealth Pool)
+    public double socialWealthPool;
+
     public StockMarketSim(long seed) {
         super(seed);
         numStocks = Config.MARKET_NUM_STOCKS;
         simulationDays = Config.MARKET_SIMULATION_DAYS;
-
-        // 默认加载基准剧本，防止空指针
         this.activeScenario = new BaselineScenario();
     }
 
-    /**
-     * 设置要运行的剧本
-     */
     public void setScenario(MarketScenario scenario) {
         this.activeScenario = scenario;
     }
@@ -62,49 +58,44 @@ public class StockMarketSim extends SimState {
     public void start() {
         super.start();
 
-        // 清理旧数据
         traders.clear();
         stocks.clear();
 
-        // 【关键修复】 数据库初始化逻辑
-        // 1. 如果存在旧的 Logger (例如 UI 界面点击了 Stop 后又点击 Start)，先关闭它
         if (dbLogger != null) {
             dbLogger.close();
             dbLogger = null;
         }
-        // 2. 只有在模拟真正开始时，才创建新的数据库文件
         dbLogger = new DatabaseLogger(this.seed());
 
-        // 初始化服务
         valuation = new ValuationService();
         intervention = new InterventionService(this);
 
-        // 初始化股票
         for (int i = 0; i < numStocks; i++) {
             stocks.add(new Stock(i));
         }
 
-        // 创建 Agent
         createAgents();
 
-        // 初始分配 (替代 IPO)
+        // 【新增 V4.33】 初始化社会公共资金池
+        // 统计所有场内初始资金，按照倍数设置场外池
+        double totalInitialCash = 0;
+        for(int i=0; i<traders.size(); i++) {
+            totalInitialCash += ((BaseTrader)traders.get(i)).portfolio.cash;
+        }
+        this.socialWealthPool = totalInitialCash * Config.ECONOMY_SOCIAL_POOL_RATIO;
+        System.out.println("Social Wealth Pool Initialized: " + this.socialWealthPool);
+
         distributeInitialShares();
 
-        // 创建市场
         market = new Market();
         market.setup(this);
-
-        // 设置 Logger (准备 Statement)
         dbLogger.setup(this);
 
-        // 安排调度: Traders
         for (int i = 0; i < traders.size(); i++) {
             schedule.scheduleRepeating((Steppable)traders.get(i), 1, 1.0);
         }
-        // 安排调度: Market
         schedule.scheduleRepeating(market, 2, 1.0);
 
-        // 安排调度: Daily Console Logger
         Steppable dailyLogger = new Steppable() {
             private long dayStartTime;
             public void step(SimState state) {
@@ -112,7 +103,8 @@ public class StockMarketSim extends SimState {
                 int stepsPerDay = market.STEPS_PER_DAY;
                 if (steps % stepsPerDay == 0) {
                     dayStartTime = System.nanoTime();
-                    System.out.println(String.format("--- Day %d Starting ---", market.getCurrentDay()));
+                    System.out.println(String.format("--- Day %d Starting [Agents: %d, Pool: %.2e] ---",
+                            market.getCurrentDay(), countActiveAgents(), socialWealthPool));
                 }
                 if (steps % stepsPerDay == stepsPerDay - 1) {
                     long dayEndTime = System.nanoTime();
@@ -124,25 +116,23 @@ public class StockMarketSim extends SimState {
         };
         schedule.scheduleRepeating(dailyLogger, 3, 1.0);
 
-        // 安排调度: Database Logger (每天记录一次)
         schedule.scheduleRepeating(dbLogger, 4, market.STEPS_PER_DAY);
 
-        // 安排模拟停止
+        // 【新增 V4.33】 调度生命周期管理器 (每天结束前执行)
+        schedule.scheduleRepeating(new AgentLifecycleManager(), 5, market.STEPS_PER_DAY);
+
         long totalSteps = (long) simulationDays * market.STEPS_PER_DAY;
         Steppable finisher = new Steppable() {
             public void step(SimState state) {
                 System.out.println("--- Simulation finished after " + simulationDays + " days ---");
-                dbLogger.step(state); // 记录最后一步
-                dbLogger.close();     // 关闭连接
-                dbLogger = null;      // 置空
+                dbLogger.step(state);
+                dbLogger.close();
+                dbLogger = null;
                 state.finish();
             }
         };
-        schedule.scheduleOnce(totalSteps, 5, finisher);
+        schedule.scheduleOnce(totalSteps, 6, finisher);
 
-        // ==========================================
-        // 应用选定的剧本
-        // ==========================================
         if (this.activeScenario != null) {
             System.out.println("Applying Scenario: " + this.activeScenario.getName());
             this.activeScenario.apply(this);
@@ -195,7 +185,6 @@ public class StockMarketSim extends SimState {
 
     private void distributeInitialShares() {
         System.out.println("--- Distributing Initial Shares (Forced Allocation) ---");
-
         List<BaseTrader> agentPool = new ArrayList<>();
         for (int i = 0; i < traders.size(); i++) {
             agentPool.add((BaseTrader) traders.get(i));
@@ -206,11 +195,7 @@ public class StockMarketSim extends SimState {
             double remainingShares = stock.liquidShares;
             double price = stock.ipoPrice;
 
-            System.out.printf("Allocating %s (Total: %.0f, Price: %.2f)...%n", stock.stockId, remainingShares, price);
-
             Collections.shuffle(agentPool, new Random(this.seed() + i));
-
-            // 每批分配 0.5%
             double batchSize = Math.max(100, Math.floor(stock.liquidShares * 0.005));
             batchSize = Math.floor(batchSize / 100) * 100;
 
@@ -221,24 +206,17 @@ public class StockMarketSim extends SimState {
                 if (agentIndex >= agentPool.size()) {
                     agentIndex = 0;
                     loopCount++;
-                    // 防止死循环：如果循环3次还没分完，说明大家都没钱了
-                    if (loopCount > 3) {
-                        System.err.println("Warning: Could not distribute all shares for " + stock.stockId + ". Agents ran out of cash/slots.");
-                        break;
-                    }
+                    if (loopCount > 3) break;
                 }
 
                 BaseTrader agent = agentPool.get(agentIndex);
                 agentIndex++;
 
-                // 1. 持仓上限检查
                 boolean hasStock = agent.portfolio.getPositions().containsKey(stock);
                 if (!hasStock && agent.portfolio.getPositions().size() >= agent.maxStocks) {
                     continue;
                 }
 
-                // 2. 现金缓冲检查 (Cash Buffer)
-                // 只有当分配后剩余现金 > 总资产的 20% 时，才允许分配。
                 double currentAssets = agent.portfolio.getTotalAssets();
                 double allocationCost = batchSize * price;
 
@@ -248,20 +226,122 @@ public class StockMarketSim extends SimState {
                 }
 
                 double allocateQty = Math.min(batchSize, remainingShares);
-
-                // 执行分配 (initializePosition 内部会扣钱)
                 boolean success = agent.portfolio.initializePosition(stock, allocateQty, price);
 
                 if (success) {
                     remainingShares -= allocateQty;
-                } else {
-                    // 如果标准包买不起，尝试买能买得起的部分 (且符合现金缓冲)
-                    // 这里简化逻辑：如果因为现金不足失败，我们就不强行塞小额了，直接跳过，
-                    // 留给下一个更有钱的 Agent
                 }
             }
         }
         System.out.println("--- Initial Distribution Complete ---");
+    }
+
+    // 统计活跃 Agent
+    public int countActiveAgents() {
+        int count = 0;
+        for(int i=0; i<traders.size(); i++) {
+            if (traders.get(i) instanceof BaseTrader) {
+                if (((BaseTrader)traders.get(i)).isActive()) count++;
+            }
+        }
+        return count;
+    }
+
+    // 【新增 V4.33】 内部类：Agent 生命周期管理器
+    class AgentLifecycleManager implements Steppable {
+        @Override
+        public void step(SimState state) {
+            manageExits(state);
+            manageEntries(state);
+        }
+
+        private void manageExits(SimState state) {
+            Iterator<Object> iter = traders.iterator();
+            while (iter.hasNext()) {
+                Object obj = iter.next();
+                if (!(obj instanceof BaseTrader)) continue;
+                BaseTrader agent = (BaseTrader) obj;
+
+                if (!agent.isActive()) continue;
+
+                // 1. 破产检查 (绝望离场)
+                if (agent.isBankrupt()) {
+                    // 清算：将股票残值 (简化为现价) + 现金 + 储蓄 全部转回社会资金池
+                    double stockValue = agent.portfolio.getTotalStockValue();
+                    double totalValue = stockValue + agent.portfolio.cash + agent.portfolio.reservedCash + agent.privateSavings;
+
+                    socialWealthPool += totalValue;
+
+                    // 彻底移除 (清空资产，标记死亡)
+                    agent.portfolio.clear();
+                    agent.privateSavings = 0;
+                    agent.setActive(false);
+                    // System.out.println("Agent " + agent.traderId + " went BANKRUPT. Recycled " + totalValue);
+                    continue;
+                }
+
+                // 2. 撤资检查 (止盈/保本)
+                double withdrawn = agent.checkWithdrawal();
+                if (withdrawn > 0) {
+                    agent.transferToSavings(withdrawn);
+                    // System.out.println("Agent " + agent.traderId + " secured savings: " + withdrawn);
+                }
+            }
+        }
+
+        private void manageEntries(SimState state) {
+            int currentPop = countActiveAgents();
+
+            // A. 基础补充概率 (缺人就补)
+            double baseProb = 0;
+            if (currentPop < Config.ECONOMY_TARGET_POPULATION) {
+                baseProb = Config.ECONOMY_BASE_ENTRY_PROB;
+            }
+
+            // B. FOMO 情绪概率 (涨了就追)
+            double marketReturn = market.getRecentReturn(30); // 过去30天涨幅
+            double fomoProb = 0;
+            if (marketReturn > 0) {
+                fomoProb = marketReturn * Config.ECONOMY_FOMO_SENSITIVITY;
+            }
+
+            double totalEntryProb = baseProb + fomoProb;
+
+            // 尝试生成新 Agent
+            // 限制：资金池里必须有钱 (至少够一个标准的初始资金)
+            // 这里取一个近似值，例如 10万
+            double avgStartCash = 100_000.0;
+
+            if (random.nextDouble() < totalEntryProb && socialWealthPool > avgStartCash) {
+                createNewRetailAgent(avgStartCash);
+            }
+        }
+
+        private void createNewRetailAgent(double avgCash) {
+            // 生成初始资金
+            double initialCash = Config.nextGaussian(avgCash, avgCash * 0.2, 10000, avgCash * 2);
+            if (initialCash > socialWealthPool) initialCash = socialWealthPool;
+
+            // 扣除社会池
+            socialWealthPool -= initialCash;
+
+            // 创建新 ID (简单递增)
+            int newId = traders.size();
+
+            // 创建 RetailTrader
+            // 参数：riskTolerance 随机，MaxStocks 随机
+            double risk = random.nextDouble();
+            int maxStocks = random.nextInt(Config.AGENT_RETAIL_MAX_STOCKS_MAX - Config.AGENT_RETAIL_MAX_STOCKS_MIN + 1)
+                    + Config.AGENT_RETAIL_MAX_STOCKS_MIN;
+
+            RetailTrader newAgent = new RetailTrader(newId, initialCash, risk, maxStocks);
+
+            // 加入 Bag 并调度
+            traders.add(newAgent);
+            schedule.scheduleRepeating(newAgent, 1, 1.0);
+
+            // System.out.println("New Agent " + newId + " entered the market. Pool left: " + socialWealthPool);
+        }
     }
 
     public static void main(String[] args) {

@@ -19,21 +19,9 @@ public final class Config {
     public static final int MARKET_STEPS_PER_QUARTER = 1386;
 
     // 3. 股票 (Stock) 基础参数
-
-    // IPO 价格 (LogNormal Mu=3.2 -> Median ~24.5, Mean ~35)
     public static final double[] STOCK_IPO_PRICE = {3.2, 0.8, 0.1, 3000.0};
-
-    // 净资产 (Mean: 20)
     public static final double[] STOCK_IPO_NET_ASSETS = {20.0, 10.0, 1.0, 100.0};
-
-    // 【关键修改 1】提高 EPS 均值
-    // 原来 1.5 -> 现在 2.2
-    // 逻辑：2.2 * 20倍PE = 44元估值。大于市场均价 35元。
-    // 这会让 Agent 认为大部分股票是"被低估的"，从而引发买入行为。
-    // 同时保留负数区间，制造垃圾股。
     public static final double[] STOCK_IPO_EPS = {2.2, 2.0, -5.0, 15.0};
-
-    // 流通股 (1亿)
     public static final double[] STOCK_IPO_LIQUID_SHARES = {1.0e8, 0.5e8, 0.2e8, 5.0e8};
 
     public static final double STOCK_FUNDAMENTALS_GROWTH_RATE_MIN = -0.05;
@@ -43,11 +31,17 @@ public final class Config {
     public static final double STOCK_FUNDAMENTALS_EPS_VOLATILITY = 0.15;
     public static final double STOCK_FUNDAMENTALS_RETAINED_EARNINGS_RATIO = 0.70;
 
-    // 4. 经济体顶层设计 (3500亿)
+    // 4. 经济体顶层设计
     public static final double ECONOMY_TOTAL_CAPITAL_POOL = 3.5e11;
     public static final int ECONOMY_TOTAL_AGENTS = 5000;
 
-    // 5-7. (保持不变)
+    // 【新增 V4.33】 宏观与生命周期参数
+    public static final int ECONOMY_TARGET_POPULATION = 5000;
+    public static final double ECONOMY_SOCIAL_POOL_RATIO = 2.0; // 初始社会池是场内资金的2倍
+    public static final double ECONOMY_FOMO_SENSITIVITY = 5.0;  // 市场每涨1%，生成概率增加多少
+    public static final double ECONOMY_BASE_ENTRY_PROB = 0.01;  // 缺人时的基础补充概率
+
+    // 5-7. Agent 基础比例与参数
     public static final double AGENT_INSTITUTIONAL_POPULATION_RATIO = 0.05;
     public static final double AGENT_INSTITUTIONAL_CAPITAL_RATIO = 0.70;
     public static final double AGENT_RETAIL_SUB_RATIO = 0.60;
@@ -80,6 +74,7 @@ public final class Config {
     public static final double AGENT_INSTITUTIONAL_VALUATION_TREND_WEIGHT = 0.2;
     public static final double AGENT_INSTITUTIONAL_VALUATION_NOISE_STDDEV = 0.05;
     public static final int AGENT_INSTITUTIONAL_VALUATION_LOOKBACK_DAYS = 20;
+    public static final double AGENT_INSTITUTIONAL_BANKRUPTCY_THRESHOLD = 0.10; // 资产剩10%清算
 
     // 散户行为
     public static final double AGENT_RETAIL_IPO_HOT_SECTOR_PERCENT = 0.10;
@@ -89,6 +84,12 @@ public final class Config {
     public static final double AGENT_RETAIL_VALUATION_NOISE_STDDEV = 0.10;
     public static final int AGENT_RETAIL_VALUATION_LOOKBACK_DAYS = 10;
 
+    // 【新增 V4.33】 散户进出场参数
+    public static final double AGENT_RETAIL_DESPAIR_THRESHOLD = 0.20; // 亏损到剩20%离场
+    public static final double AGENT_RETAIL_PRINCIPAL_SECURE_BUFFER = 1.05; // 盈利5%后开始抽走本金
+    public static final double AGENT_RETAIL_PROFIT_SKIM_TRIGGER = 0.50; // 现金占总资产50%时触发抽水
+    public static final double AGENT_RETAIL_PROFIT_SKIM_RATIO = 0.20; // 每次抽走超额现金的20%
+
     // 噪音行为
     public static final double AGENT_NOISE_IPO_MIN_PERCENT = 0.10;
     public static final double AGENT_NOISE_IPO_MAX_PERCENT = 0.10;
@@ -96,12 +97,7 @@ public final class Config {
 
     // 9. 估值 (Valuation) 服务参数
     public static final double VALUATION_PB_MULTIPLIER = 1.5;
-
-    // 【关键修改 2】提高市场整体 PE 预期
-    // 原来 20.0 -> 现在 25.0
-    // 这代表市场情绪更乐观，认为 25倍 PE 是合理的。
     public static final double VALUATION_PE_MULTIPLIER = 25.0;
-
     public static final double VALUATION_SECTOR_TECH = 1.3;
     public static final double VALUATION_SECTOR_HEALTHCARE = 1.2;
     public static final double VALUATION_SECTOR_CONSUMER = 1.1;

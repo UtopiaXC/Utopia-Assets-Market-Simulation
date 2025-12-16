@@ -32,30 +32,19 @@ public class Portfolio {
 
     /**
      * 【新增 V4.29】 初始化分配股票
-     * 用于模拟开始前，将股票直接分配给 Agent。
-     * 直接扣除现金，增加持仓（Available 和 Total 同时增加）。
-     *
-     * @param stock 股票对象
-     * @param quantity 数量
-     * @param price 初始价格
-     * @return 如果现金足够且分配成功，返回 true
      */
     public boolean initializePosition(Stock stock, double quantity, double price) {
         double cost = quantity * price;
 
-        // 检查现金是否足够 (带容差)
         if (this.cash < cost - EPSILON) {
             return false;
         }
 
-        // 1. 直接扣除现金
         this.cash -= cost;
-        if (this.cash < 0) this.cash = 0; // 修正精度
+        if (this.cash < 0) this.cash = 0;
 
-        // 2. 添加持仓 (T+0, 因为是初始化，开盘即卖)
         Position p = positions.get(stock);
         if (p == null) {
-            // 初始化时，Total 和 Available 都由 quantity 填充
             p = new Position(quantity, quantity);
             positions.put(stock, p);
         } else {
@@ -66,7 +55,14 @@ public class Portfolio {
         return true;
     }
 
-    // --- 以下保持 V4.28 修复版逻辑不变 ---
+    /**
+     * 【新增 V4.33 修复】 清空投资组合 (用于破产清算)
+     */
+    public void clear() {
+        this.cash = 0;
+        this.reservedCash = 0;
+        this.positions.clear();
+    }
 
     public boolean reserveCash(double amount) {
         if (this.cash >= amount - EPSILON) {
@@ -120,23 +116,6 @@ public class Portfolio {
 
         stock.volumeThisDay += quantity;
         stock.turnoverThisDay += actualCost;
-        return true;
-    }
-
-    // (注意：原 addIPOPosition 已被废弃，可以保留也可以删除，这里保留以防万一)
-    public boolean addIPOPosition(Stock stock, double quantity, double price) {
-        if (!reserveCash(quantity * price)) return false;
-        this.reservedCash -= (quantity * price);
-        if (this.reservedCash < 0) this.reservedCash = 0;
-
-        Position p = positions.get(stock);
-        if (p == null) {
-            p = new Position(quantity, quantity);
-            positions.put(stock, p);
-        } else {
-            p.totalQuantity += quantity;
-            p.availableQuantity += quantity;
-        }
         return true;
     }
 
