@@ -23,6 +23,7 @@ public class InterventionService {
 
     /**
      * 量化宽松 (QE) / 撒钱
+     * 
      * @param amountPerAgent 每个 Agent 获得的现金数额
      */
     public void injectLiquidity(double amountPerAgent) {
@@ -36,11 +37,13 @@ public class InterventionService {
 
     /**
      * 流动性收紧 / 加息
-     * @param percent 抽走现金的百分比 (例如 0.1 表示抽走 10% 现金)
+     * 
+     * @param percent    抽走现金的百分比 (例如 0.1 表示抽走 10% 现金)
      * @param riskImpact 对风险偏好的打击 (例如 0.2 表示风险容忍度降低 0.2)
      */
     public void tightenLiquidity(double percent, double riskImpact) {
-        System.out.println(">>> [INTERVENTION] Liquidity Tightening: Cash -" + (percent*100) + "%, Risk Tolerance -" + riskImpact);
+        System.out.println(">>> [INTERVENTION] Liquidity Tightening: Cash -" + (percent * 100) + "%, Risk Tolerance -"
+                + riskImpact);
         Bag traders = sim.traders;
         for (int i = 0; i < traders.size(); i++) {
             BaseTrader trader = (BaseTrader) traders.get(i);
@@ -50,7 +53,27 @@ public class InterventionService {
             }
             // 2. 降低风险偏好 (加息导致避险)
             trader.riskTolerance -= riskImpact;
-            if (trader.riskTolerance < 0.05) trader.riskTolerance = 0.05;
+            if (trader.riskTolerance < 0.05)
+                trader.riskTolerance = 0.05;
+        }
+    }
+
+    /**
+     * 调整全局风险容忍度
+     * 
+     * @param delta 风险容忍度变化值 (正数提升，负数降低)
+     */
+    public void adjustRiskTolerance(double delta) {
+        System.out.println(">>> [INTERVENTION] Risk Tolerance Adjustment: " + (delta > 0 ? "+" : "") + delta);
+        Bag traders = sim.traders;
+        for (int i = 0; i < traders.size(); i++) {
+            BaseTrader trader = (BaseTrader) traders.get(i);
+            trader.riskTolerance += delta;
+            // 限制在合理范围
+            if (trader.riskTolerance < 0.05)
+                trader.riskTolerance = 0.05;
+            if (trader.riskTolerance > 1.0)
+                trader.riskTolerance = 1.0;
         }
     }
 
@@ -60,11 +83,13 @@ public class InterventionService {
 
     /**
      * 行业基本面冲击 (真实盈利变化)
-     * @param sector 目标板块
+     * 
+     * @param sector           目标板块
      * @param epsChangePercent EPS 变化幅度 (例如 0.5 表示盈利增加 50%, -0.2 表示减少 20%)
      */
     public void triggerSectorFundamentalShock(Sector sector, double epsChangePercent) {
-        System.out.println(">>> [INTERVENTION] Fundamental Shock on " + sector + ": EPS " + (epsChangePercent > 0 ? "+" : "") + (epsChangePercent * 100) + "%");
+        System.out.println(">>> [INTERVENTION] Fundamental Shock on " + sector + ": EPS "
+                + (epsChangePercent > 0 ? "+" : "") + (epsChangePercent * 100) + "%");
         Bag stocks = sim.stocks;
         for (int i = 0; i < stocks.size(); i++) {
             Stock stock = (Stock) stocks.get(i);
@@ -84,7 +109,8 @@ public class InterventionService {
     /**
      * 行业情绪冲击 (估值倍数变化)
      * 比如：AI 概念火热，科技股本身不赚钱，但大家愿意给 100倍 PE。
-     * @param sector 目标板块
+     * 
+     * @param sector              目标板块
      * @param sentimentMultiplier 情绪乘数 (例如 1.5 表示该板块估值溢价 50%)
      */
     public void triggerSectorSentimentShock(Sector sector, double sentimentMultiplier) {

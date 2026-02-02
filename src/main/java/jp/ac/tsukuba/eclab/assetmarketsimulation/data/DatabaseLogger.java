@@ -37,11 +37,27 @@ public class DatabaseLogger implements Steppable {
     private StockMarketSim sim; // 需要引用 sim 来获取 socialWealthPool
 
     public DatabaseLogger(long seed) {
+        this(seed, null);
+    }
+
+    public DatabaseLogger(long seed, String customDbName) {
         long timestamp = System.currentTimeMillis();
-        String dbName = String.format("SimulationResult-%d.db", timestamp);
+        String dbName = customDbName;
+        if (dbName == null || dbName.trim().isEmpty()) {
+            dbName = String.format("SimulationResult-%d.db", timestamp);
+        }
+
+        // Ensure .db extension
+        if (!dbName.endsWith(".db")) {
+            dbName = dbName + ".db";
+        }
+
         String outputDir = "output";
-        try { Files.createDirectories(Paths.get(outputDir)); }
-        catch (IOException e) { e.printStackTrace(); }
+        try {
+            Files.createDirectories(Paths.get(outputDir));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         String dbPath = outputDir + File.separator + dbName;
         try {
             Class.forName("org.sqlite.JDBC");
@@ -57,19 +73,29 @@ public class DatabaseLogger implements Steppable {
     private void initializeDatabase() throws SQLException {
         Statement stmt = conn.createStatement();
 
+        // Performance Optimization
+        stmt.execute("PRAGMA synchronous = OFF;");
+        stmt.execute("PRAGMA journal_mode = MEMORY;");
+        stmt.execute("PRAGMA cache_size = 10000;"); // Increase cache size
+
         // 【新增 V4.33】 市场日志增加 social_wealth_pool
         stmt.execute("DROP TABLE IF EXISTS market_log;");
-        stmt.execute("CREATE TABLE market_log (day INT PRIMARY KEY, open REAL, high REAL, low REAL, close REAL, volume REAL, turnover REAL, total_market_cap REAL, amplitude REAL, turnover_rate REAL, social_wealth_pool REAL);");
+        stmt.execute(
+                "CREATE TABLE market_log (day INT PRIMARY KEY, open REAL, high REAL, low REAL, close REAL, volume REAL, turnover REAL, total_market_cap REAL, amplitude REAL, turnover_rate REAL, social_wealth_pool REAL);");
 
         stmt.execute("DROP TABLE IF EXISTS stock_log;");
-        stmt.execute("CREATE TABLE stock_log (day INT, stock_id VARCHAR(10), sector TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL, turnover REAL, pb_ratio REAL, pe_ttm REAL, eps REAL, net_assets REAL, total_market_cap REAL, liquid_market_cap REAL, turnover_rate REAL, amplitude REAL, pe_dynamic REAL, total_shares REAL, liquid_shares REAL, high_52w REAL, low_52w REAL, pe_static REAL, PRIMARY KEY (day, stock_id));");
+        stmt.execute(
+                "CREATE TABLE stock_log (day INT, stock_id VARCHAR(10), sector TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL, turnover REAL, pb_ratio REAL, pe_ttm REAL, eps REAL, net_assets REAL, total_market_cap REAL, liquid_market_cap REAL, turnover_rate REAL, amplitude REAL, pe_dynamic REAL, total_shares REAL, liquid_shares REAL, high_52w REAL, low_52w REAL, pe_static REAL, PRIMARY KEY (day, stock_id));");
         stmt.execute("DROP TABLE IF EXISTS holdings_log;");
-        stmt.execute("CREATE TABLE holdings_log (day INT, trader_id INT, stock_id VARCHAR(10), quantity REAL, PRIMARY KEY (day, trader_id, stock_id));");
+        stmt.execute(
+                "CREATE TABLE holdings_log (day INT, trader_id INT, stock_id VARCHAR(10), quantity REAL, PRIMARY KEY (day, trader_id, stock_id));");
 
         stmt.execute("DROP TABLE IF EXISTS ipo_log;");
-        stmt.execute("CREATE TABLE ipo_log (stock_id VARCHAR(10) PRIMARY KEY, ipo_price REAL, available_shares REAL, demand_shares REAL, oversubscription_ratio REAL);");
+        stmt.execute(
+                "CREATE TABLE ipo_log (stock_id VARCHAR(10) PRIMARY KEY, ipo_price REAL, available_shares REAL, demand_shares REAL, oversubscription_ratio REAL);");
         stmt.execute("DROP TABLE IF EXISTS ipo_subscription_log;");
-        stmt.execute("CREATE TABLE ipo_subscription_log (stock_id VARCHAR(10), trader_id INT, demand_shares REAL, allocated_shares REAL, PRIMARY KEY (stock_id, trader_id));");
+        stmt.execute(
+                "CREATE TABLE ipo_subscription_log (stock_id VARCHAR(10), trader_id INT, demand_shares REAL, allocated_shares REAL, PRIMARY KEY (stock_id, trader_id));");
 
         // 【新增 V4.33】 增加 private_savings, is_active
         stmt.execute("DROP TABLE IF EXISTS trader_log;");
@@ -87,7 +113,8 @@ public class DatabaseLogger implements Steppable {
                 ");");
 
         psMarketLog = conn.prepareStatement("INSERT INTO market_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
-        psStockLog = conn.prepareStatement("INSERT INTO stock_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+        psStockLog = conn.prepareStatement(
+                "INSERT INTO stock_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
         psHoldingsLog = conn.prepareStatement("INSERT INTO holdings_log VALUES (?, ?, ?, ?);");
         psIPOLog = conn.prepareStatement("INSERT INTO ipo_log VALUES (?, ?, ?, ?, ?);");
         psIPOSubscriptionLog = conn.prepareStatement("INSERT INTO ipo_subscription_log VALUES (?, ?, ?, ?);");
@@ -99,7 +126,8 @@ public class DatabaseLogger implements Steppable {
     }
 
     public void logIPO(String stockId, double ipoPrice, double available, double demand, double ratio) {
-        if (conn == null) return;
+        if (conn == null)
+            return;
         try {
             psIPOLog.setString(1, stockId);
             psIPOLog.setDouble(2, ipoPrice);
@@ -107,25 +135,35 @@ public class DatabaseLogger implements Steppable {
             psIPOLog.setDouble(4, demand);
             psIPOLog.setDouble(5, ratio);
             psIPOLog.addBatch();
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
+
     public void logIPOSubscription(String stockId, int traderId, double demandShares, double allocatedShares) {
-        if (conn == null) return;
+        if (conn == null)
+            return;
         try {
             psIPOSubscriptionLog.setString(1, stockId);
             psIPOSubscriptionLog.setInt(2, traderId);
             psIPOSubscriptionLog.setDouble(3, demandShares);
             psIPOSubscriptionLog.setDouble(4, allocatedShares);
             psIPOSubscriptionLog.addBatch();
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
+
     public void commitIPO() {
-        if (conn == null) return;
+        if (conn == null)
+            return;
         try {
             psIPOLog.executeBatch();
             psIPOSubscriptionLog.executeBatch();
             conn.commit();
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public void setup(StockMarketSim sim) {
@@ -137,9 +175,11 @@ public class DatabaseLogger implements Steppable {
 
     @Override
     public void step(SimState state) {
-        if (conn == null || traders == null || stocks == null) return;
+        if (conn == null || traders == null || stocks == null)
+            return;
         int day = market.getCurrentDay();
-        if (day == 0) return;
+        if (day == 0)
+            return;
         if (state.schedule.getSteps() % market.STEPS_PER_DAY == 0) {
             System.out.println("DBLogger: Logging Day " + day);
         }
@@ -191,7 +231,8 @@ public class DatabaseLogger implements Steppable {
             // 3. 记录所有交易员
             for (int i = 0; i < traders.size(); i++) {
                 Object obj = traders.get(i);
-                if (!(obj instanceof BaseTrader)) continue;
+                if (!(obj instanceof BaseTrader))
+                    continue;
 
                 BaseTrader t = (BaseTrader) obj;
                 // 如果是已死亡 Agent，可以选择记录最后一笔状态或者不记录
@@ -232,23 +273,48 @@ public class DatabaseLogger implements Steppable {
             psStockLog.executeBatch();
             psTraderLog.executeBatch();
             psHoldingsLog.executeBatch();
-            conn.commit();
+
+            // Commit intermittently to improve performance
+            // Only commit every 10 log steps or if it's the last day
+            if (day % 10 == 0 || day == sim.simulationDays) {
+                conn.commit();
+            }
 
         } catch (SQLException e) {
             System.err.println("CRITICAL LOGGER ERROR during step(): " + e.getMessage());
             e.printStackTrace();
-            try { conn.rollback(); } catch (SQLException ex) { ex.printStackTrace(); }
+            try {
+                conn.rollback();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
     public void close() {
         try {
-            if (psMarketLog != null) { psMarketLog.executeBatch(); psMarketLog.close(); }
-            if (psStockLog != null) { psStockLog.executeBatch(); psStockLog.close(); }
-            if (psTraderLog != null) { psTraderLog.executeBatch(); psTraderLog.close(); }
-            if (psHoldingsLog != null) { psHoldingsLog.executeBatch(); psHoldingsLog.close(); }
-            if (psIPOLog != null) { psIPOLog.close(); }
-            if (psIPOSubscriptionLog != null) { psIPOSubscriptionLog.close(); }
+            if (psMarketLog != null) {
+                psMarketLog.executeBatch();
+                psMarketLog.close();
+            }
+            if (psStockLog != null) {
+                psStockLog.executeBatch();
+                psStockLog.close();
+            }
+            if (psTraderLog != null) {
+                psTraderLog.executeBatch();
+                psTraderLog.close();
+            }
+            if (psHoldingsLog != null) {
+                psHoldingsLog.executeBatch();
+                psHoldingsLog.close();
+            }
+            if (psIPOLog != null) {
+                psIPOLog.close();
+            }
+            if (psIPOSubscriptionLog != null) {
+                psIPOSubscriptionLog.close();
+            }
 
             if (conn != null) {
                 conn.commit();

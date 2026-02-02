@@ -350,3 +350,8 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
+/frontend/node_modules/
+/src/main/resources/static/
+/output/
+/.agent/
+/.venv/

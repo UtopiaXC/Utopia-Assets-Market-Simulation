@@ -1,5 +1,6 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation;
 
+import lombok.Setter;
 import sim.engine.SimState;
 import sim.engine.Steppable;
 import sim.util.Bag;
@@ -33,6 +34,8 @@ public class StockMarketSim extends SimState {
     public int numStocks;
     public int simulationDays;
     public double socialWealthPool;
+    @Setter
+    private String simulationName; // Custom simulation name
 
     public StockMarketSim(long seed) {
         super(seed);
@@ -54,7 +57,7 @@ public class StockMarketSim extends SimState {
             dbLogger.close();
             dbLogger = null;
         }
-        dbLogger = new DatabaseLogger(this.seed());
+        dbLogger = new DatabaseLogger(this.seed(), this.simulationName);
         valuation = new ValuationService();
         intervention = new InterventionService(this);
         for (int i = 0; i < numStocks; i++) {
@@ -65,8 +68,8 @@ public class StockMarketSim extends SimState {
         // 初始化资金池。分配场内资金与场外资金
         // Initial assets pools of market assets and outside (social) assets
         double totalInitialCash = 0;
-        for(int i=0; i<traders.size(); i++) {
-            totalInitialCash += ((BaseTrader)traders.get(i)).portfolio.cash;
+        for (int i = 0; i < traders.size(); i++) {
+            totalInitialCash += ((BaseTrader) traders.get(i)).portfolio.cash;
         }
         this.socialWealthPool = totalInitialCash * Config.ECONOMY_SOCIAL_POOL_RATIO;
         System.out.println("Social Wealth Pool Initialized: " + this.socialWealthPool);
@@ -76,12 +79,13 @@ public class StockMarketSim extends SimState {
         dbLogger.setup(this);
 
         for (int i = 0; i < traders.size(); i++) {
-            schedule.scheduleRepeating((Steppable)traders.get(i), 1, 1.0);
+            schedule.scheduleRepeating((Steppable) traders.get(i), 1, 1.0);
         }
         schedule.scheduleRepeating(market, 2, 1.0);
 
         Steppable dailyLogger = new Steppable() {
             private long dayStartTime;
+
             public void step(SimState state) {
                 long steps = state.schedule.getSteps();
                 int stepsPerDay = market.STEPS_PER_DAY;
@@ -138,7 +142,8 @@ public class StockMarketSim extends SimState {
         double instStdDev = instMeanCash * Config.AGENT_INSTITUTIONAL_CASH_STDDEV_RATIO;
         for (int i = 0; i < numInstitutional; i++) {
             double instCash = Config.nextGaussian(instMeanCash, instStdDev, instMeanCash * 0.1, Double.MAX_VALUE);
-            int maxStocks = random.nextInt(Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MAX - Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN + 1)
+            int maxStocks = random
+                    .nextInt(Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MAX - Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN + 1)
                     + Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN;
             double risk = 0.3 + (0.4 * random.nextDouble());
             traders.add(new InstitutionalTrader(i, instCash, risk, maxStocks));
@@ -181,7 +186,8 @@ public class StockMarketSim extends SimState {
                 if (agentIndex >= agentPool.size()) {
                     agentIndex = 0;
                     loopCount++;
-                    if (loopCount > 3) break;
+                    if (loopCount > 3)
+                        break;
                 }
                 BaseTrader agent = agentPool.get(agentIndex);
                 agentIndex++;
@@ -209,9 +215,10 @@ public class StockMarketSim extends SimState {
     // Count activated agents
     public int countActiveAgents() {
         int count = 0;
-        for(int i=0; i<traders.size(); i++) {
+        for (int i = 0; i < traders.size(); i++) {
             if (traders.get(i) instanceof BaseTrader) {
-                if (((BaseTrader)traders.get(i)).isActive()) count++;
+                if (((BaseTrader) traders.get(i)).isActive())
+                    count++;
             }
         }
         return count;
@@ -225,27 +232,33 @@ public class StockMarketSim extends SimState {
             manageExits(state);
             manageEntries(state);
         }
+
         private void manageExits(SimState state) {
             Iterator<Object> iter = traders.iterator();
             while (iter.hasNext()) {
                 Object obj = iter.next();
-                if (!(obj instanceof BaseTrader)) continue;
+                if (!(obj instanceof BaseTrader))
+                    continue;
                 BaseTrader agent = (BaseTrader) obj;
-                if (!agent.isActive()) continue;
+                if (!agent.isActive())
+                    continue;
                 // 破产检查
                 // Bankruptcy checker
                 if (agent.isBankrupt()) {
                     // 清算。将股票残值、现金、储蓄 全部转回社会资金池
-                    // Liquidation. All residual value of shares, cash, and savings will be transferred back to the social capital pool.
+                    // Liquidation. All residual value of shares, cash, and savings will be
+                    // transferred back to the social capital pool.
                     double stockValue = agent.portfolio.getTotalStockValue();
-                    double totalValue = stockValue + agent.portfolio.cash + agent.portfolio.reservedCash + agent.privateSavings;
+                    double totalValue = stockValue + agent.portfolio.cash + agent.portfolio.reservedCash
+                            + agent.privateSavings;
                     socialWealthPool += totalValue;
                     // 彻底移除,清空资产，标记死亡
                     // Remove Agent. Mark as dead.
                     agent.portfolio.clear();
                     agent.privateSavings = 0;
                     agent.setActive(false);
-                    // System.out.println("Agent " + agent.traderId + " went BANKRUPT. Recycled " + totalValue);
+                    // System.out.println("Agent " + agent.traderId + " went BANKRUPT. Recycled " +
+                    // totalValue);
                     continue;
                 }
 
@@ -254,7 +267,8 @@ public class StockMarketSim extends SimState {
                 double withdrawn = agent.checkWithdrawal();
                 if (withdrawn > 0) {
                     agent.transferToSavings(withdrawn);
-                    // System.out.println("Agent " + agent.traderId + " secured savings: " + withdrawn);
+                    // System.out.println("Agent " + agent.traderId + " secured savings: " +
+                    // withdrawn);
                 }
             }
         }
@@ -276,7 +290,7 @@ public class StockMarketSim extends SimState {
                 fomoProb = marketReturn * Config.ECONOMY_FOMO_SENSITIVITY;
             }
             double totalEntryProb = baseProb + fomoProb;
-            //TODO: DYNAMICALLY GENERATE INITIAL CAPITAL
+            // TODO: DYNAMICALLY GENERATE INITIAL CAPITAL
             double avgStartCash = 100_000.0;
             if (random.nextDouble() < totalEntryProb && socialWealthPool > avgStartCash) {
                 createNewRetailAgent(avgStartCash);
@@ -285,7 +299,8 @@ public class StockMarketSim extends SimState {
 
         private void createNewRetailAgent(double avgCash) {
             double initialCash = Config.nextGaussian(avgCash, avgCash * 0.2, 10000, avgCash * 2);
-            if (initialCash > socialWealthPool) initialCash = socialWealthPool;
+            if (initialCash > socialWealthPool)
+                initialCash = socialWealthPool;
             socialWealthPool -= initialCash;
             int newId = traders.size();
             double risk = random.nextDouble();
@@ -294,7 +309,6 @@ public class StockMarketSim extends SimState {
             RetailTrader newAgent = new RetailTrader(newId, initialCash, risk, maxStocks);
             traders.add(newAgent);
             schedule.scheduleRepeating(newAgent, 1, 1.0);
-            // System.out.println("New Agent " + newId + " entered the market. Pool left: " + socialWealthPool);
         }
     }
 
