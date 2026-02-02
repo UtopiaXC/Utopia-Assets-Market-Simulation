@@ -190,6 +190,7 @@ public class SimulationSession {
     }
 
     // ============ DTO for API ============
+    // ============ DTO for API ============
     public SessionStatus toStatus() {
         return new SessionStatus(
                 sessionId,
@@ -200,7 +201,9 @@ public class SimulationSession {
                 activeAgents,
                 marketIndex,
                 speedMultiplier,
-                lastError);
+                lastError,
+                (int) (currentStep % config.getStepsPerDay()),
+                config.getStepsPerDay());
     }
 
     public record SessionStatus(
@@ -212,6 +215,8 @@ public class SimulationSession {
             int activeAgents,
             double marketIndex,
             double speedMultiplier,
-            String lastError) {
+            String lastError,
+            int currentStepInDay,
+            int totalStepsPerDay) {
     }
 }

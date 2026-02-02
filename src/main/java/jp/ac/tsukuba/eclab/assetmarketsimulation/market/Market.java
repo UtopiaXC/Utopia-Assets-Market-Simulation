@@ -40,12 +40,10 @@ public class Market implements Steppable {
     private class OrderBook {
         PriorityQueue<Order> buyOrders = new PriorityQueue<>(
                 Comparator.comparingDouble((Order o) -> o.price).reversed()
-                        .thenComparingLong(o -> o.timestamp)
-        );
+                        .thenComparingLong(o -> o.timestamp));
         PriorityQueue<Order> sellOrders = new PriorityQueue<>(
                 Comparator.comparingDouble((Order o) -> o.price)
-                        .thenComparingLong(o -> o.timestamp)
-        );
+                        .thenComparingLong(o -> o.timestamp));
     }
 
     private Map<Stock, OrderBook> allOrderBooks;
@@ -80,14 +78,33 @@ public class Market implements Steppable {
     private final long ORDER_EXPIRY_STEPS;
 
     public Market() {
+        this(Config.MARKET_STEPS_PER_DAY);
+    }
+
+    public Market(int stepsPerDay) {
         this.allOrderBooks = new HashMap<>();
         this.priceHistories = new HashMap<>();
         this.marketIndexHistory = new ArrayList<>();
 
-        this.STEPS_PER_DAY = Config.MARKET_STEPS_PER_DAY;
-        this.LUNCH_BREAK_START = Config.MARKET_LUNCH_BREAK_START;
-        this.LUNCH_BREAK_END = Config.MARKET_LUNCH_BREAK_END;
-        this.STEPS_PER_QUARTER = Config.MARKET_STEPS_PER_QUARTER;
+        this.STEPS_PER_DAY = stepsPerDay;
+
+        if (stepsPerDay == Config.MARKET_STEPS_PER_DAY) {
+            this.LUNCH_BREAK_START = Config.MARKET_LUNCH_BREAK_START;
+            this.LUNCH_BREAK_END = Config.MARKET_LUNCH_BREAK_END;
+            this.STEPS_PER_QUARTER = Config.MARKET_STEPS_PER_QUARTER;
+        } else {
+            // Custom steps implies continuous trading (no lunch break simulation)
+            // TODO: In the future, if we want to simulate idle steps (e.g. for news
+            // propagation during lunch),
+            // we can calculate LUNCH_BREAK_START/END here based on time mapping.
+            // Currently we skip lunch steps to focus on trading efficiency.
+            this.LUNCH_BREAK_START = stepsPerDay; // Always trading
+            this.LUNCH_BREAK_END = stepsPerDay;
+            // Scale quarter steps
+            this.STEPS_PER_QUARTER = (int) (Config.MARKET_STEPS_PER_QUARTER
+                    * ((double) stepsPerDay / Config.MARKET_STEPS_PER_DAY));
+        }
+
         this.INDEX_BASE = Config.MARKET_INDEX_BASE;
 
         this.ORDER_EXPIRY_STEPS = (long) 3 * this.STEPS_PER_DAY;
@@ -129,7 +146,8 @@ public class Market implements Steppable {
     }
 
     public synchronized void submitBuyOrder(BaseTrader trader, Stock stock, double quantity, double price) {
-        if (!isTradingHours()) return;
+        if (!isTradingHours())
+            return;
         if (price > stock.limitUp || price < stock.limitDown) {
             return;
         }
@@ -140,7 +158,8 @@ public class Market implements Steppable {
     }
 
     public synchronized void submitSellOrder(BaseTrader trader, Stock stock, double quantity, double price) {
-        if (!isTradingHours()) return;
+        if (!isTradingHours())
+            return;
         if (price > stock.limitUp || price < stock.limitDown) {
             return;
         }
@@ -151,7 +170,8 @@ public class Market implements Steppable {
     }
 
     private void pruneExpiredOrders() {
-        if (ORDER_EXPIRY_STEPS <= 0) return;
+        if (ORDER_EXPIRY_STEPS <= 0)
+            return;
 
         for (OrderBook ob : allOrderBooks.values()) {
             Iterator<Order> buyIter = ob.buyOrders.iterator();
@@ -217,13 +237,16 @@ public class Market implements Steppable {
             while (true) {
                 Order bestBuy = ob.buyOrders.peek();
                 Order bestSell = ob.sellOrders.peek();
-                if (bestBuy == null || bestSell == null) break;
+                if (bestBuy == null || bestSell == null)
+                    break;
 
                 if (bestBuy.price >= bestSell.price) {
                     double tradePrice = (bestBuy.timestamp < bestSell.timestamp) ? bestBuy.price : bestSell.price;
 
-                    if (tradePrice > stock.limitUp) tradePrice = stock.limitUp;
-                    if (tradePrice < stock.limitDown) tradePrice = stock.limitDown;
+                    if (tradePrice > stock.limitUp)
+                        tradePrice = stock.limitUp;
+                    if (tradePrice < stock.limitDown)
+                        tradePrice = stock.limitDown;
 
                     double tradeQuantity = Math.min(bestBuy.quantity, bestSell.quantity);
 
@@ -242,7 +265,8 @@ public class Market implements Steppable {
                         if (!buySuccess) {
                             System.err.println("CRITICAL: Buy execution failed.");
                             bestSell.trader.portfolio.cash -= (tradeQuantity * tradePrice);
-                            if (bestSell.trader.portfolio.cash < 0) bestSell.trader.portfolio.cash = 0;
+                            if (bestSell.trader.portfolio.cash < 0)
+                                bestSell.trader.portfolio.cash = 0;
                             ob.buyOrders.poll();
                             continue;
                         }
@@ -258,8 +282,10 @@ public class Market implements Steppable {
                     bestBuy.quantity -= tradeQuantity;
                     bestSell.quantity -= tradeQuantity;
 
-                    if (bestBuy.quantity < 0.001) ob.buyOrders.poll();
-                    if (bestSell.quantity < 0.001) ob.sellOrders.poll();
+                    if (bestBuy.quantity < 0.001)
+                        ob.buyOrders.poll();
+                    if (bestSell.quantity < 0.001)
+                        ob.sellOrders.poll();
 
                 } else {
                     break;
@@ -330,14 +356,16 @@ public class Market implements Steppable {
 
     // 【新增 V4.33】 获取近期市场回报率
     public double getRecentReturn(int lookbackDays) {
-        if (marketIndexHistory.isEmpty()) return 0.0;
+        if (marketIndexHistory.isEmpty())
+            return 0.0;
         int currentIdx = marketIndexHistory.size() - 1;
         int pastIdx = Math.max(0, currentIdx - lookbackDays);
 
         double currentVal = marketIndexHistory.get(currentIdx);
         double pastVal = marketIndexHistory.get(pastIdx);
 
-        if (pastVal <= 0) return 0.0;
+        if (pastVal <= 0)
+            return 0.0;
         return (currentVal - pastVal) / pastVal;
     }
 }

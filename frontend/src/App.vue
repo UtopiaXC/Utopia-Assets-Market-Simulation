@@ -45,7 +45,76 @@ const router = useRouter()
 const route = useRoute()
 const store = useSimulationStore()
 
-// ... (Theme parts omitted in replacement block context matching) ...
+// Theme management
+type ThemeMode = 'light' | 'dark' | 'system'
+const themeMode = ref<ThemeMode>('system')
+const systemPrefersDark = ref(false)
+
+// Detect system preference
+function detectSystemTheme() {
+  systemPrefersDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+// Computed actual theme
+const isDark = computed(() => {
+  if (themeMode.value === 'system') {
+    return systemPrefersDark.value
+  }
+  return themeMode.value === 'dark'
+})
+
+const currentTheme = computed(() => isDark.value ? darkTheme : null)
+
+// Theme overrides for light mode to improve readability
+const themeOverrides = computed<GlobalThemeOverrides>(() => {
+  if (isDark.value) {
+    return {}
+  }
+  // Light mode overrides
+  return {
+    common: {
+      primaryColor: '#2080f0',
+      primaryColorHover: '#4098fc',
+      primaryColorPressed: '#1060c9',
+      bodyColor: '#f5f7f9',
+      cardColor: '#ffffff',
+      textColor1: '#1f2328',
+      textColor2: '#424a53',
+      textColor3: '#636c76',
+      borderColor: '#d1d9e0',
+      dividerColor: '#d8dee4',
+    },
+    Card: {
+      borderRadius: '12px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    },
+    Menu: {
+      itemTextColor: '#424a53',
+      itemIconColor: '#636c76',
+      itemTextColorActive: '#2080f0',
+      itemIconColorActive: '#2080f0',
+    }
+  }
+})
+
+// Theme toggle options
+const themeOptions = [
+  { label: 'Light', key: 'light' },
+  { label: 'Dark', key: 'dark' },
+  { label: 'System', key: 'system' }
+]
+
+function handleThemeChange(key: string) {
+  themeMode.value = key as ThemeMode
+  localStorage.setItem('theme-mode', key)
+}
+
+// Current theme icon
+const themeIcon = computed(() => {
+  if (themeMode.value === 'system') return DesktopOutline
+  if (themeMode.value === 'dark') return MoonOutline
+  return SunnyOutline
+})
 
 // Menu options
 const menuOptions = computed(() => [
@@ -53,11 +122,6 @@ const menuOptions = computed(() => [
     label: 'Dashboard',
     key: 'dashboard',
     icon: () => h(NIcon, null, { default: () => h(HomeOutline) })
-  },
-  {
-    label: 'Results',
-    key: 'results',
-    icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
   },
   {
     label: 'Market Overview',
@@ -92,6 +156,11 @@ const menuOptions = computed(() => [
   {
     type: 'divider',
     key: 'd1'
+  },
+  {
+    label: 'Results',
+    key: 'results',
+    icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
   },
   {
     label: 'Compare',
@@ -167,7 +236,7 @@ onMounted(async () => {
           >
             <!-- Logo -->
             <div style="padding: 20px; text-align: center; border-bottom: 1px solid var(--n-border-color)">
-              <h2 style="margin: 0; color: var(--n-text-color)">Utopia Market</h2>
+              <h2 style="margin: 0; color: var(--n-text-color)">Market Simulation</h2>
             </div>
             
             <!-- Menu -->

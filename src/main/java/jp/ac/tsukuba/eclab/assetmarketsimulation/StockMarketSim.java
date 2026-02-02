@@ -36,6 +36,8 @@ public class StockMarketSim extends SimState {
     public double socialWealthPool;
     @Setter
     private String simulationName; // Custom simulation name
+    @Setter
+    private int stepsPerDay = Config.MARKET_STEPS_PER_DAY; // Steps per day, configurable
 
     public StockMarketSim(long seed) {
         super(seed);
@@ -74,7 +76,7 @@ public class StockMarketSim extends SimState {
         this.socialWealthPool = totalInitialCash * Config.ECONOMY_SOCIAL_POOL_RATIO;
         System.out.println("Social Wealth Pool Initialized: " + this.socialWealthPool);
         distributeInitialShares();
-        market = new Market();
+        market = new Market(this.stepsPerDay);
         market.setup(this);
         dbLogger.setup(this);
 

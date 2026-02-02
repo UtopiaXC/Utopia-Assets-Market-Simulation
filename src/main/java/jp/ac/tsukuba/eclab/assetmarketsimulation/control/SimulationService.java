@@ -56,7 +56,7 @@ public class SimulationService implements InterventionAPI {
     public SimulationSession.SessionStatus getStatus() {
         if (currentSession == null) {
             return new SimulationSession.SessionStatus(
-                    null, "NO_SESSION", 0, 0, 0, 0, 0, 1.0, null);
+                    null, "NO_SESSION", 0, 0, 0, 0, 0, 1.0, null, 0, 0);
         }
         return currentSession.toStatus();
     }
@@ -82,6 +82,7 @@ public class SimulationService implements InterventionAPI {
             sim.numStocks = config.getNumStocks();
             sim.simulationDays = config.getSimulationDays();
             sim.setSimulationName(config.getSimulationName());
+            sim.setStepsPerDay(config.getStepsPerDay());
 
             // Set scenario
             MarketScenario scenario = createScenario(config.getScenarioName());

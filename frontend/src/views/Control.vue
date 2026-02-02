@@ -43,7 +43,7 @@
         
         <!-- Progress -->
         <n-space vertical>
-          <n-text>Progress: Day {{ status.currentDay }} / {{ status.totalDays }}</n-text>
+          <n-text>Progress: Day {{ status.currentDay }} (Step {{ status.currentStepInDay || 0 }} / {{ status.totalStepsPerDay || '-' }}) / {{ status.totalDays }}</n-text>
           <n-progress type="line" :percentage="status.progress" :height="20" indicator-placement="inside">
             {{ status.progress.toFixed(1) }}%
           </n-progress>
@@ -80,8 +80,8 @@
           
           <n-input-number 
             v-model:value="customSpeed" 
-            :min="0.1" 
-            :max="10" 
+            :min="0.01" 
+            :max="100" 
             :step="0.1" 
             style="width: 100px"
             :disabled="currentSpeed === 0"
@@ -150,6 +150,11 @@
               <n-gi>
                 <n-form-item label="Scenario">
                   <n-select v-model:value="config.scenarioName" :options="scenarioOptions" />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="Minutes Per Step">
+                  <n-input-number v-model:value="minutesPerStep" :min="1" :max="240" />
                 </n-form-item>
               </n-gi>
               <n-gi>
@@ -279,7 +284,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, h, watch } from 'vue'
 import { 
   NCard, NSpace, NButton, NButtonGroup, NProgress, NText, NIcon, NTag,
   NTabs, NTabPane, NForm, NFormItem, NInputNumber, NSelect, NSlider,
@@ -321,7 +326,9 @@ const status = ref({
   activeAgents: 0,
   marketIndex: 0,
   speedMultiplier: 1.0,
-  lastError: null as string | null
+  lastError: null as string | null,
+  currentStepInDay: 0,
+  totalStepsPerDay: 0
 })
 
 const config = ref({
@@ -331,6 +338,7 @@ const config = ref({
   institutionalRatio: 0.05,
   indexBase: 3000,
   scenarioName: 'BaselineScenario',
+  stepsPerDay: 22, // Default from Config
   logSampleInterval: 1,
   holdingsSnapshotInterval: 10
 })
@@ -348,10 +356,19 @@ const newEvent = ref({
 })
 
 // Speed control - revised
-const stepDelay = ref(1000) // Base delay in ms
+const stepDelay = ref(100) // Base delay in ms
 const currentSpeed = ref(1) // 0 = MAX
 const customSpeed = ref(1)
-const speedPresets = [0.1, 0.5, 1, 2, 5, 10]
+const speedPresets = [0.1, 1, 5, 10, 50, 100]
+
+// Step Calculation
+const minutesPerStep = ref(15)
+watch(minutesPerStep, (val) => {
+  if (val > 0) {
+    // Formula: (4 hours * 60) / minutes
+    config.value.stepsPerDay = Math.floor(240 / val)
+  }
+}, { immediate: true })
 
 // Computed
 const hasSession = computed(() => status.value.sessionId !== null)
@@ -429,6 +446,13 @@ async function loadDefaultConfig() {
   try {
     const data = await controlApi.getDefaultConfig() as any
     config.value = { ...config.value, ...data }
+    
+    // Reset local inputs
+    minutesPerStep.value = 15
+    
+    // Enforce step calculation (overwrite backend default of 22)
+    config.value.stepsPerDay = Math.floor(240 / minutesPerStep.value)
+    
     message.success('Configuration reset to defaults')
   } catch (e) {
     message.error('Failed to load default config')
