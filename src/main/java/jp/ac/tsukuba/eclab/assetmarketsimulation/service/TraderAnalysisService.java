@@ -2,18 +2,26 @@ package jp.ac.tsukuba.eclab.assetmarketsimulation.service;
 
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.TraderDetailDTO;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.TraderDetailDTO.*;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.AgentAssetDailyEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.AgentEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.HoldingsSnapshotEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.StockDailyEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.AgentAssetDailyMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.AgentMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.HoldingsMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.StockDailyMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.ibatis.session.SqlSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Trader analysis service - migrated from Python trader.py
+ * Trader analysis service - uses MyBatis mappers
  */
 @Service
 public class TraderAnalysisService {
@@ -21,188 +29,111 @@ public class TraderAnalysisService {
     @Autowired
     private DatabaseService databaseService;
 
-    /**
-     * Get list of all traders for a given day
-     * SQL: SELECT * FROM trader_log WHERE day = ?
-     */
-    public List<TraderSummary> getTraderList(String dbFile, int day) throws SQLException {
+    private final ObjectMapper jsonMapper = new ObjectMapper();
+
+    public List<TraderSummary> getTraderList(String dbFile, int day) {
         List<TraderSummary> traders = new ArrayList<>();
-
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            String sql = "SELECT trader_id, trader_type, is_active, total_assets, " +
-                    "private_savings, cash, stock_value " +
-                    "FROM trader_log WHERE day = ? ORDER BY trader_id";
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setInt(1, day);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        traders.add(new TraderSummary(
-                                rs.getInt("trader_id"),
-                                rs.getString("trader_type"),
-                                rs.getBoolean("is_active"),
-                                rs.getDouble("total_assets"),
-                                rs.getDouble("private_savings"),
-                                rs.getDouble("cash"),
-                                rs.getDouble("stock_value")));
-                    }
-                }
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            AgentAssetDailyMapper mapper = session.getMapper(AgentAssetDailyMapper.class);
+            for (AgentAssetDailyEntity e : mapper.selectByDay(day)) {
+                traders.add(new TraderSummary(
+                        e.getAgentId(),
+                        e.getAgentType() != null ? e.getAgentType() : "",
+                        e.getIsActive() != null ? e.getIsActive() : false,
+                        e.getTotalAssets() != null ? e.getTotalAssets() : 0,
+                        e.getPrivateSavings() != null ? e.getPrivateSavings() : 0,
+                        e.getCash() != null ? e.getCash() : 0,
+                        e.getStockValue() != null ? e.getStockValue() : 0));
             }
         }
         return traders;
     }
 
-    /**
-     * Get detailed trader analysis data
-     * Equivalent to Python trader.py: update_trader_detail()
-     */
-    public TraderDetailDTO getTraderDetail(String dbFile, int traderId, int day) throws SQLException {
+    public TraderDetailDTO getTraderDetail(String dbFile, int traderId, int day) {
         TraderDetailDTO result = new TraderDetailDTO();
         result.traderId = traderId;
 
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            // Get historical data
-            result.history = getTraderHistory(conn, traderId);
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            AgentMapper agentMapper = session.getMapper(AgentMapper.class);
+            AgentAssetDailyMapper assetMapper = session.getMapper(AgentAssetDailyMapper.class);
 
-            // Get current metrics
-            result.currentMetrics = getCurrentMetrics(conn, traderId, day, result.history);
-
-            // Get trader type and status
-            TraderSummary summary = getTraderSummary(conn, traderId, day);
-            if (summary != null) {
-                result.traderType = summary.traderType;
-                result.isActive = summary.isActive;
+            // Get static agent info
+            AgentEntity agent = agentMapper.selectById(traderId);
+            if (agent != null) {
+                result.traderType = agent.getAgentType();
             }
 
-            // Get current holdings
-            result.holdings = getHoldings(conn, traderId, day);
-        }
+            // Get history
+            List<AgentAssetDailyEntity> history = assetMapper.selectByAgentId(traderId);
+            result.history = new ArrayList<>();
+            for (AgentAssetDailyEntity e : history) {
+                TraderDayData data = new TraderDayData();
+                data.day = e.getDay();
+                data.totalAssets = e.getTotalAssets() != null ? e.getTotalAssets() : 0;
+                data.privateSavings = e.getPrivateSavings() != null ? e.getPrivateSavings() : 0;
+                data.cash = e.getCash() != null ? e.getCash() : 0;
+                data.reservedCash = e.getReservedCash() != null ? e.getReservedCash() : 0;
+                data.stockValue = e.getStockValue() != null ? e.getStockValue() : 0;
+                data.riskTolerance = e.getRiskTolerance() != null ? e.getRiskTolerance() : 0;
+                data.isActive = e.getIsActive() != null ? e.getIsActive() : false;
+                result.history.add(data);
+            }
 
+            // Current day status
+            AgentAssetDailyEntity current = assetMapper.selectByAgentIdAndDay(traderId, day);
+            if (current != null) {
+                result.isActive = current.getIsActive() != null ? current.getIsActive() : false;
+            }
+
+            // Get current metrics
+            result.currentMetrics = getCurrentMetrics(traderId, day, result.history);
+
+            // Get holdings from snapshot
+            result.holdings = getHoldings(session, traderId, day);
+        }
         return result;
     }
 
-    /**
-     * Get trader history data
-     * SQL: SELECT day, total_assets, private_savings, cash, reserved_cash,
-     * stock_value, risk_tolerance
-     * FROM trader_log WHERE trader_id = ? ORDER BY day
-     */
-    private List<TraderDayData> getTraderHistory(Connection conn, int traderId) throws SQLException {
-        List<TraderDayData> history = new ArrayList<>();
-        String sql = "SELECT day, total_assets, private_savings, cash, reserved_cash, " +
-                "stock_value, risk_tolerance, is_active " +
-                "FROM trader_log WHERE trader_id = ? ORDER BY day";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, traderId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    TraderDayData data = new TraderDayData();
-                    data.day = rs.getInt("day");
-                    data.totalAssets = rs.getDouble("total_assets");
-                    data.privateSavings = rs.getDouble("private_savings");
-                    data.cash = rs.getDouble("cash");
-                    data.reservedCash = rs.getDouble("reserved_cash");
-                    data.stockValue = rs.getDouble("stock_value");
-                    data.riskTolerance = rs.getDouble("risk_tolerance");
-                    data.isActive = rs.getBoolean("is_active");
-                    history.add(data);
-                }
-            }
-        }
-        return history;
-    }
-
-    /**
-     * Get current metrics for a trader, including daily PnL calculation
-     */
-    private TraderMetrics getCurrentMetrics(Connection conn, int traderId, int day, List<TraderDayData> history) {
-        // Find current day data
+    private TraderMetrics getCurrentMetrics(int traderId, int day, List<TraderDayData> history) {
         TraderDayData current = null;
         TraderDayData previous = null;
-
         for (TraderDayData data : history) {
-            if (data.day == day) {
-                current = data;
-            } else if (data.day == day - 1) {
-                previous = data;
-            }
+            if (data.day == day) current = data;
+            else if (data.day == day - 1) previous = data;
         }
+        if (current == null) return null;
 
-        if (current == null) {
-            return null;
-        }
-
-        // Calculate daily PnL
-        double dailyPnl = 0;
-        if (previous != null) {
-            dailyPnl = current.totalAssets - previous.totalAssets;
-        }
-
-        return new TraderMetrics(
-                current.totalAssets,
-                dailyPnl,
-                current.privateSavings,
-                current.cash,
-                current.reservedCash,
-                current.stockValue,
-                current.riskTolerance);
+        double dailyPnl = previous != null ? current.totalAssets - previous.totalAssets : 0;
+        return new TraderMetrics(current.totalAssets, dailyPnl, current.privateSavings,
+                current.cash, current.reservedCash, current.stockValue, current.riskTolerance);
     }
 
-    /**
-     * Get trader summary for a specific day
-     */
-    private TraderSummary getTraderSummary(Connection conn, int traderId, int day) throws SQLException {
-        String sql = "SELECT trader_id, trader_type, is_active, total_assets, " +
-                "private_savings, cash, stock_value " +
-                "FROM trader_log WHERE trader_id = ? AND day = ?";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, traderId);
-            ps.setInt(2, day);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return new TraderSummary(
-                            rs.getInt("trader_id"),
-                            rs.getString("trader_type"),
-                            rs.getBoolean("is_active"),
-                            rs.getDouble("total_assets"),
-                            rs.getDouble("private_savings"),
-                            rs.getDouble("cash"),
-                            rs.getDouble("stock_value"));
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Get trader holdings
-     * SQL: SELECT h.stock_id, h.quantity, s.close
-     * FROM holdings_log h JOIN stock_log s ON h.stock_id=s.stock_id AND h.day=s.day
-     * WHERE h.trader_id=? AND h.day=?
-     */
-    private List<Holding> getHoldings(Connection conn, int traderId, int day) throws SQLException {
+    private List<Holding> getHoldings(SqlSession session, int traderId, int day) {
         List<Holding> holdings = new ArrayList<>();
-        String sql = "SELECT h.stock_id, h.quantity, s.close " +
-                "FROM holdings_log h " +
-                "JOIN stock_log s ON h.stock_id = s.stock_id AND h.day = s.day " +
-                "WHERE h.trader_id = ? AND h.day = ?";
+        try {
+            HoldingsMapper holdingsMapper = session.getMapper(HoldingsMapper.class);
+            StockDailyMapper stockDailyMapper = session.getMapper(StockDailyMapper.class);
 
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, traderId);
-            ps.setInt(2, day);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    double quantity = rs.getDouble("quantity");
-                    double price = rs.getDouble("close");
-                    holdings.add(new Holding(
-                            rs.getString("stock_id"),
-                            quantity,
-                            price,
-                            quantity * price));
-                }
+            HoldingsSnapshotEntity snapshot = holdingsMapper.selectLatestSnapshot(traderId, day);
+            if (snapshot == null) return holdings;
+
+            Map<String, Double> holdingsMap = jsonMapper.readValue(
+                    snapshot.getHoldingsJson(), new TypeReference<Map<String, Double>>() {});
+
+            for (Map.Entry<String, Double> entry : holdingsMap.entrySet()) {
+                int stockId = Integer.parseInt(entry.getKey());
+                double quantity = entry.getValue();
+
+                StockDailyEntity stockDaily = stockDailyMapper.selectByStockIdAndDay(stockId, day);
+                double price = stockDaily != null ? stockDaily.getClose() : 0;
+
+                holdings.add(new Holding(
+                        stockDaily != null && stockDaily.getStockCode() != null ?
+                                stockDaily.getStockCode() : entry.getKey(),
+                        quantity, price, quantity * price));
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return holdings;
     }

@@ -9,7 +9,7 @@ import sim.engine.Steppable;
 /**
  * 基准剧本：包含科技股繁荣、流动性释放、消费股暴雷、央行加息
  */
-public class BaselineScenario implements MarketScenario {
+public class TestScenario implements MarketScenario {
 
     @Override
     public String getName() {

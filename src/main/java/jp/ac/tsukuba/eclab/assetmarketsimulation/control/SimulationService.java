@@ -4,7 +4,7 @@ import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.control.event.InterventionEvent;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.control.event.InterventionEvents;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.BaselineScenario;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.TestScenario;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketScenario;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 import org.springframework.stereotype.Service;
@@ -115,7 +115,7 @@ public class SimulationService implements InterventionAPI {
                 }
             };
         }
-        return new BaselineScenario();
+        return new TestScenario();
     }
 
     private void runSimulation() {

@@ -2,18 +2,20 @@ package jp.ac.tsukuba.eclab.assetmarketsimulation.service;
 
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.SectorStatsDTO;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.SectorStatsDTO.*;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.SectorEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.StockDailyEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.SectorMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.StockDailyMapper;
+import org.apache.ibatis.session.SqlSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * Sector statistics service - migrated from Python sector.py
+ * Sector statistics service - uses MyBatis mappers
  */
 @Service
 public class SectorAnalysisService {
@@ -21,81 +23,46 @@ public class SectorAnalysisService {
     @Autowired
     private DatabaseService databaseService;
 
-    /**
-     * Get sector statistics data
-     * Equivalent to Python sector.py: update_sector()
-     */
-    public SectorStatsDTO getSectorStats(String dbFile) throws SQLException {
+    public SectorStatsDTO getSectorStats(String dbFile) {
         SectorStatsDTO result = new SectorStatsDTO();
-
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            // Query both in one pass for efficiency
-            String sql = "SELECT day, sector, SUM(total_market_cap) as cap, AVG(pe_ttm) as pe " +
-                    "FROM stock_log GROUP BY day, sector ORDER BY day, sector";
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            StockDailyMapper mapper = session.getMapper(StockDailyMapper.class);
+            List<StockDailyEntity> aggregates = mapper.selectSectorAggregates();
 
             List<SectorData> marketCapData = new ArrayList<>();
             List<SectorData> peData = new ArrayList<>();
 
-            try (PreparedStatement ps = conn.prepareStatement(sql);
-                    ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    int day = rs.getInt("day");
-                    String sector = rs.getString("sector");
-
-                    marketCapData.add(new SectorData(day, sector, rs.getDouble("cap")));
-                    peData.add(new SectorData(day, sector, rs.getDouble("pe")));
-                }
+            for (StockDailyEntity e : aggregates) {
+                String sector = e.getSectorName() != null ? e.getSectorName() : "";
+                marketCapData.add(new SectorData(e.getDay(), sector,
+                        e.getTotalMarketCap() != null ? e.getTotalMarketCap() : 0));
+                peData.add(new SectorData(e.getDay(), sector,
+                        e.getPeTtm() != null ? e.getPeTtm() : 0));
             }
 
             result.marketCapHistory = marketCapData;
             result.peHistory = peData;
         }
-
         return result;
     }
 
-    /**
-     * Get list of all sectors
-     */
-    public List<String> getSectorList(String dbFile) throws SQLException {
-        List<String> sectors = new ArrayList<>();
-
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            String sql = "SELECT DISTINCT sector FROM stock_log ORDER BY sector";
-
-            try (PreparedStatement ps = conn.prepareStatement(sql);
-                    ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    sectors.add(rs.getString("sector"));
-                }
-            }
+    public List<String> getSectorList(String dbFile) {
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            SectorMapper mapper = session.getMapper(SectorMapper.class);
+            return mapper.selectAll().stream()
+                    .map(SectorEntity::getName)
+                    .collect(Collectors.toList());
         }
-        return sectors;
     }
 
-    /**
-     * Get sector stocks for a specific day
-     */
-    public List<SectorStockInfo> getSectorStocks(String dbFile, String sector, int day) throws SQLException {
+    public List<SectorStockInfo> getSectorStocks(String dbFile, String sector, int day) {
         List<SectorStockInfo> stocks = new ArrayList<>();
-
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            String sql = "SELECT stock_id, close, pe_ttm, total_market_cap, turnover " +
-                    "FROM stock_log WHERE sector = ? AND day = ? ORDER BY total_market_cap DESC";
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setString(1, sector);
-                ps.setInt(2, day);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        stocks.add(new SectorStockInfo(
-                                rs.getString("stock_id"),
-                                rs.getDouble("close"),
-                                rs.getDouble("pe_ttm"),
-                                rs.getDouble("total_market_cap"),
-                                rs.getDouble("turnover")));
-                    }
-                }
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            StockDailyMapper mapper = session.getMapper(StockDailyMapper.class);
+            for (StockDailyEntity e : mapper.selectBySectorAndDay(sector, day)) {
+                stocks.add(new SectorStockInfo(
+                        e.getStockCode() != null ? e.getStockCode() : String.valueOf(e.getStockId()),
+                        e.getClose(), e.getPeTtm(), e.getTotalMarketCap(), e.getTurnover()));
             }
         }
         return stocks;

@@ -10,12 +10,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 
-import jp.ac.tsukuba.eclab.assetmarketsimulation.data.DatabaseLogger;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.data.SimulationDataLogger;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.InterventionService;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketScenario;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.BaselineScenario;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.TestScenario;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.ValuationService;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.InstitutionalTrader;
@@ -27,7 +27,7 @@ public class StockMarketSim extends SimState {
     public Bag traders = new Bag();
     public Bag stocks = new Bag();
     public Market market;
-    public DatabaseLogger dbLogger;
+    public SimulationDataLogger dbLogger;
     public ValuationService valuation;
     public InterventionService intervention;
     private MarketScenario activeScenario;
@@ -43,7 +43,7 @@ public class StockMarketSim extends SimState {
         super(seed);
         numStocks = Config.MARKET_NUM_STOCKS;
         simulationDays = Config.MARKET_SIMULATION_DAYS;
-        this.activeScenario = new BaselineScenario();
+        this.activeScenario = new TestScenario();
     }
 
     public void setScenario(MarketScenario scenario) {
@@ -59,7 +59,7 @@ public class StockMarketSim extends SimState {
             dbLogger.close();
             dbLogger = null;
         }
-        dbLogger = new DatabaseLogger(this.seed(), this.simulationName);
+        dbLogger = new SimulationDataLogger(this.seed(), this.simulationName);
         valuation = new ValuationService();
         intervention = new InterventionService(this);
         for (int i = 0; i < numStocks; i++) {
@@ -310,6 +310,9 @@ public class StockMarketSim extends SimState {
                     + Config.AGENT_RETAIL_MAX_STOCKS_MIN;
             RetailTrader newAgent = new RetailTrader(newId, initialCash, risk, maxStocks);
             traders.add(newAgent);
+            if (dbLogger != null) {
+                dbLogger.logNewAgent(newAgent);
+            }
             schedule.scheduleRepeating(newAgent, 1, 1.0);
         }
     }

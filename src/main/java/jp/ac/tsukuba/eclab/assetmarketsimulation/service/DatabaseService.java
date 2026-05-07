@@ -1,33 +1,26 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.service;
 
+import jp.ac.tsukuba.eclab.assetmarketsimulation.data.DynamicSqlSessionManager;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
 /**
- * Service for managing database connections to simulation result files
+ * Service for managing database connections to simulation result files.
+ * Now uses MyBatis SqlSessionFactory instead of raw JDBC connections.
  */
 @Service
 public class DatabaseService {
 
     @Value("${simulation.output.directory:output}")
     private String outputDirectory;
-
-    static {
-        try {
-            Class.forName("org.sqlite.JDBC");
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("SQLite JDBC driver not found", e);
-        }
-    }
 
     /**
      * List all available simulation database files
@@ -45,7 +38,6 @@ public class DatabaseService {
             return simulations;
         }
 
-        // Sort by modification time, newest first
         Arrays.sort(dbFiles, Comparator.comparingLong(File::lastModified).reversed());
 
         for (File file : dbFiles) {
@@ -60,27 +52,32 @@ public class DatabaseService {
     }
 
     /**
-     * Get a database connection for a specific simulation file
+     * Get a MyBatis SqlSession for a specific simulation file.
+     * Caller is responsible for closing the session.
      */
-    public Connection getConnection(String dbPath) throws SQLException {
-        File file = new File(dbPath);
-        if (!file.exists()) {
-            // Try in output directory
-            file = new File(outputDirectory, dbPath);
-        }
-
-        if (!file.exists()) {
-            throw new SQLException("Database file not found: " + dbPath);
-        }
-
-        return DriverManager.getConnection("jdbc:sqlite:" + file.getAbsolutePath());
+    public SqlSession openSession(String dbFileName) {
+        String dbPath = resolveDbPath(dbFileName);
+        return DynamicSqlSessionManager.openSession(dbPath);
     }
 
     /**
-     * Get connection by filename (looks in output directory)
+     * Get the SqlSessionFactory for a specific simulation file.
      */
-    public Connection getConnectionByName(String fileName) throws SQLException {
-        return getConnection(new File(outputDirectory, fileName).getAbsolutePath());
+    public SqlSessionFactory getSessionFactory(String dbFileName) {
+        String dbPath = resolveDbPath(dbFileName);
+        return DynamicSqlSessionManager.getOrCreate(dbPath);
+    }
+
+    private String resolveDbPath(String dbFileName) {
+        File file = new File(dbFileName);
+        if (file.exists()) {
+            return file.getAbsolutePath();
+        }
+        file = new File(outputDirectory, dbFileName);
+        if (file.exists()) {
+            return file.getAbsolutePath();
+        }
+        throw new RuntimeException("Database file not found: " + dbFileName);
     }
 
     /**

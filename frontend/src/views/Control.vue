@@ -337,7 +337,7 @@ const config = ref({
   totalAgents: 5000,
   institutionalRatio: 0.05,
   indexBase: 3000,
-  scenarioName: 'BaselineScenario',
+  scenarioName: 'TestScenario',
   stepsPerDay: 22, // Default from Config
   logSampleInterval: 1,
   holdingsSnapshotInterval: 10
@@ -387,8 +387,8 @@ const statusType = computed(() => {
 
 // Options
 const scenarioOptions = [
-  { label: 'Baseline Scenario', value: 'BaselineScenario' },
-  { label: 'Empty Scenario', value: 'EmptyScenario' }
+  { label: 'Empty Scenario', value: 'EmptyScenario' },
+  { label: 'Test Scenario', value: 'TestScenario' }
 ]
 
 const eventTypeOptions = [

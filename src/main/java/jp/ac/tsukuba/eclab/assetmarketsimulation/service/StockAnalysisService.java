@@ -2,18 +2,25 @@ package jp.ac.tsukuba.eclab.assetmarketsimulation.service;
 
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.StockDetailDTO;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.StockDetailDTO.*;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.HoldingsSnapshotEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.StockDailyEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.StockEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.HoldingsMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.StockDailyMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.StockMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.AgentMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.ibatis.session.SqlSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Stock analysis service - migrated from Python stock.py
+ * Stock analysis service - uses MyBatis mappers
  */
 @Service
 public class StockAnalysisService {
@@ -21,177 +28,129 @@ public class StockAnalysisService {
     @Autowired
     private DatabaseService databaseService;
 
-    /**
-     * Get list of all stocks for a given day
-     * SQL: SELECT stock_id, sector, close, pe_ttm, total_market_cap FROM stock_log
-     * WHERE day = ?
-     */
-    public List<StockSummary> getStockList(String dbFile, int day) throws SQLException {
+    private final ObjectMapper jsonMapper = new ObjectMapper();
+
+    public List<StockSummary> getStockList(String dbFile, int day) {
         List<StockSummary> stocks = new ArrayList<>();
-
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            String sql = "SELECT stock_id, sector, close, pe_ttm, total_market_cap " +
-                    "FROM stock_log WHERE day = ? ORDER BY stock_id";
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setInt(1, day);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        stocks.add(new StockSummary(
-                                rs.getString("stock_id"),
-                                rs.getString("sector"),
-                                rs.getDouble("close"),
-                                rs.getDouble("pe_ttm"),
-                                rs.getDouble("total_market_cap")));
-                    }
-                }
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            StockDailyMapper mapper = session.getMapper(StockDailyMapper.class);
+            for (StockDailyEntity e : mapper.selectByDay(day)) {
+                stocks.add(new StockSummary(
+                        e.getStockCode() != null ? e.getStockCode() : String.valueOf(e.getStockId()),
+                        e.getSectorName() != null ? e.getSectorName() : "",
+                        e.getClose(), e.getPeTtm(), e.getTotalMarketCap()));
             }
         }
         return stocks;
     }
 
-    /**
-     * Get detailed stock analysis data
-     * Equivalent to Python stock.py: update_stock_detail()
-     */
-    public StockDetailDTO getStockDetail(String dbFile, String stockId, int day) throws SQLException {
+    public StockDetailDTO getStockDetail(String dbFile, String stockId, int day) {
         StockDetailDTO result = new StockDetailDTO();
         result.stockId = stockId;
 
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            // Get historical data
-            result.history = getStockHistory(conn, stockId);
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            StockMapper stockMapper = session.getMapper(StockMapper.class);
+            StockDailyMapper dailyMapper = session.getMapper(StockDailyMapper.class);
+            HoldingsMapper holdingsMapper = session.getMapper(HoldingsMapper.class);
 
-            // Get current metrics
-            result.currentMetrics = getCurrentMetrics(conn, stockId, day);
+            // Resolve stock ID (could be code like "UTEC000001" or numeric index)
+            int stockIndex = resolveStockIndex(session, stockId);
+            if (stockIndex < 0) return result;
 
-            // Get sector
-            if (!result.history.isEmpty()) {
-                result.sector = getSector(conn, stockId);
+            // Get static stock info
+            StockEntity stockEntity = stockMapper.selectById(stockIndex);
+            if (stockEntity != null) {
+                result.sector = stockEntity.getSectorName();
             }
 
-            // Get shareholders
-            result.shareholders = getShareholders(conn, stockId, day);
-        }
+            // Get history
+            List<StockDailyEntity> history = dailyMapper.selectByStockId(stockIndex);
+            result.history = new ArrayList<>();
+            for (StockDailyEntity e : history) {
+                StockDayData data = new StockDayData();
+                data.day = e.getDay();
+                data.open = e.getOpen();
+                data.high = e.getHigh();
+                data.low = e.getLow();
+                data.close = e.getClose();
+                data.volume = e.getVolume();
+                data.turnover = e.getTurnover();
+                data.pbRatio = e.getPbRatio();
+                data.peTtm = e.getPeTtm();
+                data.peStatic = e.getPeStatic() != null ? e.getPeStatic() : 0;
+                data.peDynamic = e.getPeDynamic() != null ? e.getPeDynamic() : 0;
+                data.eps = e.getEps();
+                data.netAssets = e.getNetAssets();
+                data.totalMarketCap = e.getTotalMarketCap();
+                data.liquidMarketCap = e.getLiquidMarketCap();
+                data.turnoverRate = e.getTurnoverRate();
+                data.amplitude = e.getAmplitude();
+                // totalShares/liquidShares come from stock entity now
+                data.totalShares = stockEntity != null ? stockEntity.getTotalShares() : 0;
+                data.liquidShares = stockEntity != null ? stockEntity.getLiquidShares() : 0;
+                data.high52w = e.getHigh52w();
+                data.low52w = e.getLow52w();
+                result.history.add(data);
+            }
 
+            // Get current metrics
+            StockDailyEntity current = dailyMapper.selectByStockIdAndDay(stockIndex, day);
+            if (current != null) {
+                result.currentMetrics = new StockMetrics(
+                        current.getClose(), current.getPeTtm(), current.getPbRatio(),
+                        current.getTotalMarketCap(), current.getVolume(), current.getTurnoverRate());
+            }
+
+            // Get shareholders from holdings snapshots
+            result.shareholders = getShareholdersFromSnapshot(session, stockIndex, day);
+        }
         return result;
     }
 
-    /**
-     * Get stock history data
-     * SQL: SELECT * FROM stock_log WHERE stock_id = ? ORDER BY day
-     */
-    private List<StockDayData> getStockHistory(Connection conn, String stockId) throws SQLException {
-        List<StockDayData> history = new ArrayList<>();
-        String sql = "SELECT day, open, high, low, close, volume, turnover, " +
-                "pb_ratio, pe_ttm, pe_static, pe_dynamic, eps, net_assets, " +
-                "total_market_cap, liquid_market_cap, turnover_rate, amplitude, " +
-                "total_shares, liquid_shares, high_52w, low_52w " +
-                "FROM stock_log WHERE stock_id = ? ORDER BY day";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, stockId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    StockDayData data = new StockDayData();
-                    data.day = rs.getInt("day");
-                    data.open = rs.getDouble("open");
-                    data.high = rs.getDouble("high");
-                    data.low = rs.getDouble("low");
-                    data.close = rs.getDouble("close");
-                    data.volume = rs.getDouble("volume");
-                    data.turnover = rs.getDouble("turnover");
-                    data.pbRatio = rs.getDouble("pb_ratio");
-                    data.peTtm = rs.getDouble("pe_ttm");
-                    data.peStatic = rs.getDouble("pe_static");
-                    data.peDynamic = rs.getDouble("pe_dynamic");
-                    data.eps = rs.getDouble("eps");
-                    data.netAssets = rs.getDouble("net_assets");
-                    data.totalMarketCap = rs.getDouble("total_market_cap");
-                    data.liquidMarketCap = rs.getDouble("liquid_market_cap");
-                    data.turnoverRate = rs.getDouble("turnover_rate");
-                    data.amplitude = rs.getDouble("amplitude");
-                    data.totalShares = rs.getDouble("total_shares");
-                    data.liquidShares = rs.getDouble("liquid_shares");
-                    data.high52w = rs.getDouble("high_52w");
-                    data.low52w = rs.getDouble("low_52w");
-                    history.add(data);
-                }
-            }
+    private int resolveStockIndex(SqlSession session, String stockId) {
+        // Try as numeric index first
+        try {
+            return Integer.parseInt(stockId);
+        } catch (NumberFormatException e) {
+            // Try as stock code
+            StockMapper mapper = session.getMapper(StockMapper.class);
+            StockEntity entity = mapper.selectByCode(stockId);
+            return entity != null ? entity.getId() : -1;
         }
-        return history;
     }
 
-    /**
-     * Get current metrics for a stock on a specific day
-     */
-    private StockMetrics getCurrentMetrics(Connection conn, String stockId, int day) throws SQLException {
-        String sql = "SELECT close, pe_ttm, pb_ratio, total_market_cap, volume, turnover_rate " +
-                "FROM stock_log WHERE stock_id = ? AND day = ?";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, stockId);
-            ps.setInt(2, day);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return new StockMetrics(
-                            rs.getDouble("close"),
-                            rs.getDouble("pe_ttm"),
-                            rs.getDouble("pb_ratio"),
-                            rs.getDouble("total_market_cap"),
-                            rs.getDouble("volume"),
-                            rs.getDouble("turnover_rate"));
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Get stock sector
-     */
-    private String getSector(Connection conn, String stockId) throws SQLException {
-        String sql = "SELECT sector FROM stock_log WHERE stock_id = ? LIMIT 1";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, stockId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getString("sector");
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Get top shareholders of a stock
-     * SQL: SELECT h.trader_id, t.trader_type, h.quantity, (h.quantity * s.close) as
-     * value
-     * FROM holdings_log h JOIN stock_log s ON h.stock_id = s.stock_id AND h.day =
-     * s.day
-     * LEFT JOIN trader_log t ON h.trader_id = t.trader_id AND t.day = h.day
-     * WHERE h.stock_id = ? AND h.day = ? ORDER BY h.quantity DESC LIMIT 50
-     */
-    private List<Shareholder> getShareholders(Connection conn, String stockId, int day) throws SQLException {
+    private List<Shareholder> getShareholdersFromSnapshot(SqlSession session, int stockIndex, int day) {
         List<Shareholder> shareholders = new ArrayList<>();
-        String sql = "SELECT h.trader_id, t.trader_type, h.quantity, (h.quantity * s.close) as value " +
-                "FROM holdings_log h " +
-                "JOIN stock_log s ON h.stock_id = s.stock_id AND h.day = s.day " +
-                "LEFT JOIN trader_log t ON h.trader_id = t.trader_id AND t.day = h.day " +
-                "WHERE h.stock_id = ? AND h.day = ? ORDER BY h.quantity DESC LIMIT 50";
+        try {
+            HoldingsMapper holdingsMapper = session.getMapper(HoldingsMapper.class);
+            AgentMapper agentMapper = session.getMapper(AgentMapper.class);
 
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, stockId);
-            ps.setInt(2, day);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
+            // Get all snapshots near the requested day
+            List<HoldingsSnapshotEntity> snapshots = holdingsMapper.selectSnapshotsByDay(
+                    day - (day % 50 == 0 ? 0 : day % 50) // Find closest snapshot day
+            );
+
+            String stockKey = String.valueOf(stockIndex);
+            for (HoldingsSnapshotEntity snap : snapshots) {
+                Map<String, Double> holdings = jsonMapper.readValue(
+                        snap.getHoldingsJson(), new TypeReference<Map<String, Double>>() {});
+                Double quantity = holdings.get(stockKey);
+                if (quantity != null && quantity > 0) {
+                    var agent = agentMapper.selectById(snap.getAgentId());
                     shareholders.add(new Shareholder(
-                            rs.getInt("trader_id"),
-                            rs.getString("trader_type"),
-                            rs.getDouble("quantity"),
-                            rs.getDouble("value")));
+                            snap.getAgentId(),
+                            agent != null ? agent.getAgentType() : "Unknown",
+                            quantity, 0)); // value requires current price, set to 0 for now
                 }
             }
+
+            // Sort by quantity descending, limit to 50
+            shareholders.sort((a, b) -> Double.compare(b.quantity, a.quantity));
+            if (shareholders.size() > 50) {
+                shareholders = shareholders.subList(0, 50);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         return shareholders;
     }

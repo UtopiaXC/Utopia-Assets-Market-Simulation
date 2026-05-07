@@ -17,6 +17,7 @@ import java.util.Iterator;
 // 本项目
 import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.data.SimulationDataLogger;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 
 public class Market implements Steppable {
@@ -287,6 +288,18 @@ public class Market implements Steppable {
                     if (bestSell.quantity < 0.001)
                         ob.sellOrders.poll();
 
+                    // Log trade record
+                    SimulationDataLogger logger = model.dbLogger;
+                    if (logger != null) {
+                        int stockIdx = -1;
+                        for (int si = 0; si < model.stocks.size(); si++) {
+                            if (model.stocks.get(si) == stock) { stockIdx = si; break; }
+                        }
+                        logger.logTrade(getCurrentDay(), stockIdx,
+                                bestBuy.trader.traderId, bestSell.trader.traderId,
+                                tradePrice, tradeQuantity);
+                    }
+
                 } else {
                     break;
                 }
@@ -330,7 +343,7 @@ public class Market implements Steppable {
                 this.priceHistories.get(s).add(s.currentPrice);
                 s.update52WeekHistory(s.currentPrice);
             }
-            System.out.println("Market: Executing T+1 end-of-day settlement for Day " + getCurrentDay() + "...");
+            
             for (int i = 0; i < model.traders.size(); i++) {
                 Object obj = model.traders.get(i);
                 if (obj instanceof BaseTrader) {

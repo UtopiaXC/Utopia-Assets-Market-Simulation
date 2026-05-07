@@ -61,7 +61,9 @@ export const stockApi = {
     getHistory: (dbFile: string, stockId: string) =>
         api.get(`/simulations/${dbFile}/stocks/${stockId}/history`),
     getShareholders: (dbFile: string, stockId: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/stocks/${stockId}/shareholders`, { params: { day } })
+        api.get(`/simulations/${dbFile}/stocks/${stockId}/shareholders`, { params: { day } }),
+    getTrades: (dbFile: string, stockId: string, day: number = 1) =>
+        api.get(`/simulations/${dbFile}/stocks/${stockId}/trades`, { params: { day } })
 }
 
 // Trader API
@@ -73,7 +75,9 @@ export const traderApi = {
     getHistory: (dbFile: string, traderId: number) =>
         api.get(`/simulations/${dbFile}/traders/${traderId}/history`),
     getHoldings: (dbFile: string, traderId: number, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/traders/${traderId}/holdings`, { params: { day } })
+        api.get(`/simulations/${dbFile}/traders/${traderId}/holdings`, { params: { day } }),
+    getTrades: (dbFile: string, traderId: number, day: number = 1) =>
+        api.get(`/simulations/${dbFile}/traders/${traderId}/trades`, { params: { day } })
 }
 
 // Macro API

@@ -2,18 +2,21 @@ package jp.ac.tsukuba.eclab.assetmarketsimulation.service;
 
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.MacroStatsDTO;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.dto.MacroStatsDTO.*;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.AgentAssetDailyEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.entity.MarketDailyEntity;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.AgentAssetDailyMapper;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.MarketDailyMapper;
+import org.apache.ibatis.session.SqlSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Macro statistics service - migrated from Python macro.py
+ * Macro statistics service - uses MyBatis mappers
  */
 @Service
 public class MacroAnalysisService {
@@ -21,115 +24,59 @@ public class MacroAnalysisService {
     @Autowired
     private DatabaseService databaseService;
 
-    /**
-     * Get macro statistics data
-     * Equivalent to Python macro.py: update_macro()
-     */
-    public MacroStatsDTO getMacroStats(String dbFile) throws SQLException {
+    public MacroStatsDTO getMacroStats(String dbFile) {
         MacroStatsDTO result = new MacroStatsDTO();
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            AgentAssetDailyMapper agentMapper = session.getMapper(AgentAssetDailyMapper.class);
+            MarketDailyMapper marketMapper = session.getMapper(MarketDailyMapper.class);
 
-        try (Connection conn = databaseService.getConnectionByName(dbFile)) {
-            result.populationHistory = getPopulationHistory(conn);
-            result.wealthHistory = getWealthHistory(conn);
-            result.agentTypeAssets = getAgentTypeAssets(conn);
-            result.agentTypeRisk = getAgentTypeRisk(conn);
+            // Population history
+            List<AgentAssetDailyEntity> activeCount = agentMapper.selectActiveCountByDay();
+            result.populationHistory = new ArrayList<>();
+            for (AgentAssetDailyEntity e : activeCount) {
+                result.populationHistory.add(new PopulationData(
+                        e.getDay(), e.getActiveAgents() != null ? e.getActiveAgents() : 0));
+            }
+
+            // Wealth history - combine market and agent data
+            List<MarketDailyEntity> marketData = marketMapper.selectAll();
+            List<AgentAssetDailyEntity> wealthData = agentMapper.selectWealthAggregateByDay();
+            Map<Integer, AgentAssetDailyEntity> wealthMap = new HashMap<>();
+            for (AgentAssetDailyEntity e : wealthData) {
+                wealthMap.put(e.getDay(), e);
+            }
+            result.wealthHistory = new ArrayList<>();
+            for (MarketDailyEntity m : marketData) {
+                AgentAssetDailyEntity w = wealthMap.get(m.getDay());
+                double savings = w != null && w.getPrivateSavings() != null ? w.getPrivateSavings() : 0;
+                double totalAssets = w != null && w.getTotalAssets() != null ? w.getTotalAssets() : 0;
+                result.wealthHistory.add(new WealthData(
+                        m.getDay(),
+                        m.getSocialWealthPool() != null ? m.getSocialWealthPool() : 0,
+                        savings,
+                        totalAssets - savings));
+            }
+
+            // Agent type assets
+            List<AgentAssetDailyEntity> typeAssets = agentMapper.selectAssetsByTypeAndDay();
+            result.agentTypeAssets = new ArrayList<>();
+            for (AgentAssetDailyEntity e : typeAssets) {
+                result.agentTypeAssets.add(new AgentTypeData(
+                        e.getDay(),
+                        e.getAgentType() != null ? e.getAgentType() : "",
+                        e.getTotalAssets() != null ? e.getTotalAssets() : 0));
+            }
+
+            // Agent type risk
+            List<AgentAssetDailyEntity> typeRisk = agentMapper.selectAvgRiskByTypeAndDay();
+            result.agentTypeRisk = new ArrayList<>();
+            for (AgentAssetDailyEntity e : typeRisk) {
+                result.agentTypeRisk.add(new AgentTypeData(
+                        e.getDay(),
+                        e.getAgentType() != null ? e.getAgentType() : "",
+                        e.getRiskTolerance() != null ? e.getRiskTolerance() : 0));
+            }
         }
-
         return result;
-    }
-
-    /**
-     * Get active agent population over time
-     * SQL: SELECT day, COUNT(*) as count FROM trader_log WHERE is_active=1 GROUP BY
-     * day
-     */
-    private List<PopulationData> getPopulationHistory(Connection conn) throws SQLException {
-        List<PopulationData> data = new ArrayList<>();
-        String sql = "SELECT day, COUNT(*) as count FROM trader_log WHERE is_active = 1 GROUP BY day ORDER BY day";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-                ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                data.add(new PopulationData(
-                        rs.getInt("day"),
-                        rs.getInt("count")));
-            }
-        }
-        return data;
-    }
-
-    /**
-     * Get macro wealth structure over time
-     * Combines data from market_log (social pool) and trader_log (savings, total
-     * assets)
-     */
-    private List<WealthData> getWealthHistory(Connection conn) throws SQLException {
-        List<WealthData> data = new ArrayList<>();
-
-        // Join market and trader aggregates
-        String sql = "SELECT m.day, m.social_wealth_pool, " +
-                "t.sav as savings, (t.tot - t.sav) as liquidity " +
-                "FROM market_log m " +
-                "LEFT JOIN (" +
-                "  SELECT day, SUM(private_savings) as sav, SUM(total_assets) as tot " +
-                "  FROM trader_log GROUP BY day" +
-                ") t ON m.day = t.day " +
-                "ORDER BY m.day";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-                ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                data.add(new WealthData(
-                        rs.getInt("day"),
-                        rs.getDouble("social_wealth_pool"),
-                        rs.getDouble("savings"),
-                        rs.getDouble("liquidity")));
-            }
-        }
-        return data;
-    }
-
-    /**
-     * Get total assets by agent type over time
-     * SQL: SELECT day, trader_type, SUM(total_assets) as v FROM trader_log GROUP BY
-     * day, trader_type
-     */
-    private List<AgentTypeData> getAgentTypeAssets(Connection conn) throws SQLException {
-        List<AgentTypeData> data = new ArrayList<>();
-        String sql = "SELECT day, trader_type, SUM(total_assets) as value " +
-                "FROM trader_log GROUP BY day, trader_type ORDER BY day, trader_type";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-                ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                data.add(new AgentTypeData(
-                        rs.getInt("day"),
-                        rs.getString("trader_type"),
-                        rs.getDouble("value")));
-            }
-        }
-        return data;
-    }
-
-    /**
-     * Get average risk tolerance by agent type over time
-     * SQL: SELECT day, trader_type, AVG(risk_tolerance) as v
-     * FROM trader_log WHERE is_active=1 GROUP BY day, trader_type
-     */
-    private List<AgentTypeData> getAgentTypeRisk(Connection conn) throws SQLException {
-        List<AgentTypeData> data = new ArrayList<>();
-        String sql = "SELECT day, trader_type, AVG(risk_tolerance) as value " +
-                "FROM trader_log WHERE is_active = 1 GROUP BY day, trader_type ORDER BY day, trader_type";
-
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-                ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                data.add(new AgentTypeData(
-                        rs.getInt("day"),
-                        rs.getString("trader_type"),
-                        rs.getDouble("value")));
-            }
-        }
-        return data;
     }
 }

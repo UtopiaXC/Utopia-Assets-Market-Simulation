@@ -31,7 +31,7 @@ public class SimulationConfig {
     private double noiseSubRatio = Config.AGENT_NOISE_SUB_RATIO;
 
     // ============ Scenario ============
-    private String scenarioName = "BaselineScenario";
+    private String scenarioName = "EmptyScenario";
 
     // ============ Logging Settings ============
     // ============ Logging Settings ============
