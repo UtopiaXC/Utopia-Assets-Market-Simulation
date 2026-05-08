@@ -26,6 +26,7 @@ import {
 } from 'echarts/components'
 import { useSimulationStore } from '@/stores/simulation'
 import { stockApi } from '@/services/api'
+import { useCancellableFetch } from '@/composables/useCancellableFetch'
 
 // Register ECharts components
 use([
@@ -46,8 +47,7 @@ const store = useSimulationStore()
 const stockId = computed(() => route.params.stockId as string)
 
 // Data
-const loading = ref(false)
-const stockData = ref<any>(null)
+const { loading, data: stockData, fetch: fetchStock } = useCancellableFetch<any>()
 
 // K-line chart option
 const klineOption = computed(() => {
@@ -192,7 +192,7 @@ const shareholderColumns = [
         size: 'small',
         quaternary: true,
         onClick: () => router.push({ name: 'traderDetail', params: { traderId: row.traderId } })
-      }, { default: () => '🔍 View' })
+      }, { default: () => 'View' })
     }
   }
 ]
@@ -212,16 +212,7 @@ function formatLargeNumber(n: number): string {
 
 async function fetchData() {
   if (!store.currentSimulation || !stockId.value) return
-  
-  loading.value = true
-  try {
-    const data = await stockApi.getDetail(store.currentSimulation, stockId.value, store.currentDay)
-    stockData.value = data
-  } catch (error) {
-    console.error('Failed to fetch stock detail:', error)
-  } finally {
-    loading.value = false
-  }
+  await fetchStock((signal) => stockApi.getDetail(store.currentSimulation!, stockId.value, store.currentDay, signal))
 }
 
 // Watch for changes
@@ -246,8 +237,8 @@ onMounted(() => {
       <NBreadcrumbItem>{{ stockId }}</NBreadcrumbItem>
     </NBreadcrumb>
     
-    <h1 style="margin-bottom: 24px">📊 Stock Analysis: {{ stockId }}</h1>
-    
+    <h1 style="margin-bottom: 24px">Stock Analysis: {{ stockId }}</h1>
+
     <template v-if="!store.isConnected">
       <NCard>
         <p>Please select a simulation from the dropdown in the header.</p>

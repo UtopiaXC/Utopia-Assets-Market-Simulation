@@ -1,11 +1,10 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.control;
 
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.control.event.InterventionEvent;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.control.event.InterventionEvents;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.TestScenario;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicySlot;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicyEvent;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketScenario;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.ScenarioRegistry;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 import org.springframework.stereotype.Service;
 import sim.engine.SimState;
@@ -16,33 +15,19 @@ import java.util.concurrent.*;
 
 /**
  * Core simulation control service
- * Manages simulation lifecycle, speed, events, and state
+ * Manages simulation lifecycle, speed, and policy slot modifications
  */
 @Service
-@SuppressWarnings("unused") // FAVAR fields are placeholders for future integration
-public class SimulationService implements InterventionAPI {
+public class SimulationService {
 
     private SimulationSession currentSession;
     private final Object sessionLock = new Object();
-
-    // Event management
-    private final List<InterventionEvent> pendingEvents = new CopyOnWriteArrayList<>();
-    private final List<InterventionEvent> eventHistory = new CopyOnWriteArrayList<>();
-
-    // EA callback
-    private FitnessCallback fitnessCallback;
-
-    // FAVAR state (placeholder for future FAVAR model integration)
-    private volatile double[] currentFactorValues;
-    private volatile double[][] currentLoadingMatrix;
 
     // Status listeners (for WebSocket)
     private final List<StatusListener> statusListeners = new CopyOnWriteArrayList<>();
 
     public interface StatusListener {
         void onStatusUpdate(SimulationSession.SessionStatus status);
-
-        void onEventExecuted(InterventionEvent event);
     }
 
     // =====================================================
@@ -70,10 +55,6 @@ public class SimulationService implements InterventionAPI {
                 throw new IllegalStateException("A simulation is already running. Stop it first.");
             }
 
-            // Clear previous events
-            pendingEvents.clear();
-            eventHistory.clear();
-
             // Create new session
             currentSession = new SimulationSession(config);
 
@@ -83,9 +64,10 @@ public class SimulationService implements InterventionAPI {
             sim.simulationDays = config.getSimulationDays();
             sim.setSimulationName(config.getSimulationName());
             sim.setStepsPerDay(config.getStepsPerDay());
-
-            // Set scenario
-            MarketScenario scenario = createScenario(config.getScenarioName());
+            sim.setSocialTopK(config.getSocialTopK());
+            
+            // Apply scenario
+            MarketScenario scenario = ScenarioRegistry.getScenario(config.getScenarioName());
             sim.setScenario(scenario);
 
             currentSession.setSimulation(sim);
@@ -101,23 +83,6 @@ public class SimulationService implements InterventionAPI {
         }
     }
 
-    private MarketScenario createScenario(String name) {
-        // TODO: Add more scenarios
-        if ("EmptyScenario".equalsIgnoreCase(name)) {
-            return new MarketScenario() {
-                @Override
-                public String getName() {
-                    return "Empty Scenario";
-                }
-
-                @Override
-                public void apply(StockMarketSim sim) {
-                }
-            };
-        }
-        return new TestScenario();
-    }
-
     private void runSimulation() {
         StockMarketSim sim = currentSession.getSimulation();
         SimulationConfig config = currentSession.getConfig();
@@ -125,13 +90,12 @@ public class SimulationService implements InterventionAPI {
         try {
             sim.start();
 
-            // Register event checker
-            sim.schedule.scheduleRepeating(0, 999, new Steppable() {
-                @Override
-                public void step(SimState state) {
-                    checkAndExecuteEvents(sim);
-                }
-            });
+            // Apply initial policy slot from config
+            PolicySlot slot = sim.market.policySlot;
+            slot.setPriceLimitRatio(config.getPriceLimitRatio());
+            slot.setCircuitBreakerThreshold(config.getCircuitBreakerThreshold());
+            slot.setMaxLeverageRatio(config.getMaxLeverageRatio());
+            slot.setSettlementDays(config.getSettlementDays());
 
             int totalSteps = config.getSimulationDays() * config.getStepsPerDay();
             long lastNotifyTime = 0;
@@ -180,13 +144,6 @@ public class SimulationService implements InterventionAPI {
 
             currentSession.transitionTo(SimulationSession.State.COMPLETED);
 
-            // Notify EA callback
-            if (fitnessCallback != null) {
-                fitnessCallback.onSimulationComplete(
-                        currentSession.getSessionId(),
-                        getCurrentMetrics());
-            }
-
         } catch (InterruptedException e) {
             currentSession.setError("Simulation interrupted");
         } catch (Exception e) {
@@ -206,30 +163,6 @@ public class SimulationService implements InterventionAPI {
             }
         }
         return count;
-    }
-
-    private void checkAndExecuteEvents(StockMarketSim sim) {
-        int currentDay = sim.market.getCurrentDay();
-        long currentStep = sim.schedule.getSteps();
-
-        Iterator<InterventionEvent> it = pendingEvents.iterator();
-        while (it.hasNext()) {
-            InterventionEvent event = it.next();
-
-            boolean shouldExecute = false;
-            if (event.getTargetStep() > 0 && currentStep >= event.getTargetStep()) {
-                shouldExecute = true;
-            } else if (event.getTargetDay() > 0 && currentDay >= event.getTargetDay()) {
-                shouldExecute = true;
-            }
-
-            if (shouldExecute && !event.isExecuted()) {
-                event.apply(sim);
-                eventHistory.add(event);
-                pendingEvents.remove(event);
-                notifyEventExecuted(event);
-            }
-        }
     }
 
     /**
@@ -279,66 +212,36 @@ public class SimulationService implements InterventionAPI {
     }
 
     // =====================================================
-    // InterventionAPI Implementation
+    // Policy Slot Modification API
     // =====================================================
 
-    @Override
-    public String injectEvent(InterventionEvent event) {
-        pendingEvents.add(event);
-        return event.getEventId();
-    }
-
-    @Override
-    public List<String> injectEvents(List<InterventionEvent> events) {
-        List<String> ids = new ArrayList<>();
-        for (InterventionEvent event : events) {
-            ids.add(injectEvent(event));
+    /**
+     * Get current policy slot values
+     */
+    public Map<String, Object> getCurrentPolicy() {
+        Map<String, Object> policy = new LinkedHashMap<>();
+        if (currentSession != null && currentSession.getSimulation() != null
+                && currentSession.getSimulation().market != null) {
+            PolicySlot slot = currentSession.getSimulation().market.policySlot;
+            policy.put("priceLimitRatio", slot.getPriceLimitRatio());
+            policy.put("circuitBreakerThreshold", slot.getCircuitBreakerThreshold());
+            policy.put("maxLeverageRatio", slot.getMaxLeverageRatio());
+            policy.put("settlementDays", slot.getSettlementDays());
+        } else {
+            // Defaults
+            policy.put("priceLimitRatio", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_PRICE_LIMIT_RATIO);
+            policy.put("circuitBreakerThreshold", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_CIRCUIT_BREAKER_THRESHOLD);
+            policy.put("maxLeverageRatio", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_MAX_LEVERAGE_RATIO);
+            policy.put("settlementDays", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_SETTLEMENT_DAYS);
         }
-        return ids;
+        return policy;
     }
 
-    @Override
-    public boolean cancelEvent(String eventId) {
-        return pendingEvents.removeIf(e -> e.getEventId().equals(eventId));
-    }
 
-    @Override
-    public List<InterventionEvent> getPendingEvents() {
-        return new ArrayList<>(pendingEvents);
-    }
+    // =====================================================
+    // Metrics API
+    // =====================================================
 
-    @Override
-    public List<InterventionEvent> getEventHistory() {
-        return new ArrayList<>(eventHistory);
-    }
-
-    @Override
-    public String applyFactorIntervention(double[][] factorMatrix, double[][] loadingMatrix) {
-        InterventionEvents.MatrixInterventionEvent event = new InterventionEvents.MatrixInterventionEvent(factorMatrix,
-                loadingMatrix);
-        event.setTargetDay(currentSession != null ? currentSession.getCurrentDay() + 1 : 1);
-        return injectEvent(event);
-    }
-
-    @Override
-    public void setFactorInfluence(double[] factorValues, double[][] loadingMatrix) {
-        this.currentFactorValues = factorValues;
-        this.currentLoadingMatrix = loadingMatrix;
-        // TODO: Apply in simulation step
-    }
-
-    @Override
-    public void clearFactorInfluence() {
-        this.currentFactorValues = null;
-        this.currentLoadingMatrix = null;
-    }
-
-    @Override
-    public void registerFitnessCallback(FitnessCallback callback) {
-        this.fitnessCallback = callback;
-    }
-
-    @Override
     public Map<String, Double> getCurrentMetrics() {
         Map<String, Double> metrics = new HashMap<>();
         if (currentSession != null && currentSession.getSimulation() != null) {
@@ -347,66 +250,17 @@ public class SimulationService implements InterventionAPI {
                 metrics.put("marketIndex", sim.market.marketIndex);
                 metrics.put("totalMarketCap", sim.market.marketTotalMarketCap);
                 metrics.put("turnoverRate", sim.market.marketTurnoverRate);
+                metrics.put("circuitBreakerTriggered", sim.market.isCircuitBreakerTriggered() ? 1.0 : 0.0);
             }
             metrics.put("activeAgents", (double) currentSession.getActiveAgents());
             metrics.put("socialWealthPool", sim.socialWealthPool);
             metrics.put("day", (double) currentSession.getCurrentDay());
+            if (sim.leverageService != null) {
+                metrics.put("totalMarginCalls", (double) sim.leverageService.getTotalMarginCalls());
+                metrics.put("totalForcedLiquidations", (double) sim.leverageService.getTotalForcedLiquidations());
+            }
         }
         return metrics;
-    }
-
-    @Override
-    public void modifyAgentBehavior(int agentId, String agentType, Map<String, Object> behaviorModifier) {
-        // TODO: Implement LLM behavior modification
-        System.out.println("[LLM] Agent behavior modification requested but not yet implemented");
-    }
-
-    @Override
-    public void injectAgentDecision(int agentId, String decision, String stockId, double intensity) {
-        // TODO: Implement LLM decision injection
-        System.out.println("[LLM] Agent decision injection requested but not yet implemented");
-    }
-
-    @Override
-    public Map<String, Object> getAgentState(int agentId) {
-        Map<String, Object> state = new HashMap<>();
-        if (currentSession != null && currentSession.getSimulation() != null) {
-            StockMarketSim sim = currentSession.getSimulation();
-            for (int i = 0; i < sim.traders.size(); i++) {
-                Object obj = sim.traders.get(i);
-                if (obj instanceof BaseTrader) {
-                    BaseTrader t = (BaseTrader) obj;
-                    if (t.traderId == agentId) {
-                        state.put("traderId", t.traderId);
-                        state.put("traderType", t.traderType);
-                        state.put("riskTolerance", t.riskTolerance);
-                        state.put("cash", t.portfolio.cash);
-                        state.put("stockValue", t.portfolio.getTotalStockValue());
-                        state.put("isActive", t.isActive());
-                        break;
-                    }
-                }
-            }
-        }
-        return state;
-    }
-
-    @Override
-    public Map<String, Object> getMarketContext() {
-        Map<String, Object> context = new HashMap<>();
-        if (currentSession != null && currentSession.getSimulation() != null) {
-            StockMarketSim sim = currentSession.getSimulation();
-            if (sim.market != null) {
-                context.put("day", sim.market.getCurrentDay());
-                context.put("marketIndex", sim.market.marketIndex);
-                context.put("totalMarketCap", sim.market.marketTotalMarketCap);
-                context.put("volume", sim.market.totalVolumeThisDay);
-                context.put("turnover", sim.market.totalTurnoverThisDay);
-            }
-            context.put("activeAgents", currentSession.getActiveAgents());
-            context.put("socialWealthPool", sim.socialWealthPool);
-        }
-        return context;
     }
 
     // =====================================================
@@ -434,43 +288,32 @@ public class SimulationService implements InterventionAPI {
         }
     }
 
-    private void notifyEventExecuted(InterventionEvent event) {
-        for (StatusListener listener : statusListeners) {
-            try {
-                listener.onEventExecuted(event);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    // =====================================================
+    // Policy Event Injection (Scheduled Events)
+    // =====================================================
+
+    /**
+     * Inject a policy change event scheduled for a specific day.
+     * Uses MASON's schedule to fire the event at the correct simulation step.
+     */
+    public void injectPolicyEvent(int targetDay, String policyType, double value, String description) {
+        if (currentSession == null || currentSession.getSimulation() == null) {
+            throw new IllegalStateException("No running simulation");
         }
-    }
 
-    // =====================================================
-    // Convenience methods for creating events
-    // =====================================================
+        StockMarketSim sim = currentSession.getSimulation();
+        PolicyEvent.PolicyType type =
+                PolicyEvent.PolicyType.valueOf(policyType);
 
-    public String injectRateCut(int targetDay, double liquidityPerAgent, double riskBoost) {
-        InterventionEvents.RateCutEvent event = new InterventionEvents.RateCutEvent(liquidityPerAgent, riskBoost);
-        event.setTargetDay(targetDay);
-        return injectEvent(event);
-    }
+        PolicyEvent event =
+                new PolicyEvent(targetDay, type, value, description);
 
-    public String injectRateHike(int targetDay, double liquidityRatio, double riskDrop) {
-        InterventionEvents.RateHikeEvent event = new InterventionEvents.RateHikeEvent(liquidityRatio, riskDrop);
-        event.setTargetDay(targetDay);
-        return injectEvent(event);
-    }
+        // Schedule at the start of the target day
+        int stepsPerDay = sim.market != null ? sim.market.STEPS_PER_DAY : 1;
+        long targetStep = (long) targetDay * stepsPerDay;
+        sim.schedule.scheduleOnce(targetStep, 0, event);
 
-    public String injectSectorSentiment(int targetDay, String sector, double multiplier) {
-        Sector s = Sector.valueOf(sector.toUpperCase());
-        InterventionEvents.SectorSentimentEvent event = new InterventionEvents.SectorSentimentEvent(s, multiplier);
-        event.setTargetDay(targetDay);
-        return injectEvent(event);
-    }
-
-    public String injectSectorFundamental(int targetDay, String sector, double epsChange) {
-        Sector s = Sector.valueOf(sector.toUpperCase());
-        InterventionEvents.SectorFundamentalEvent event = new InterventionEvents.SectorFundamentalEvent(s, epsChange);
-        event.setTargetDay(targetDay);
-        return injectEvent(event);
+        System.out.println("[INJECT] Policy event scheduled: " + policyType + " -> " + value + " on day " + targetDay);
     }
 }
+

@@ -8,5 +8,6 @@ public enum Sector {
     FINANCE,    // 金融
     HEALTHCARE, // 医疗
     CONSUMER,   // 消费
-    INDUSTRY    // 工业
+    INDUSTRY,   // 工业
+    ENERGY      // 能源
 }

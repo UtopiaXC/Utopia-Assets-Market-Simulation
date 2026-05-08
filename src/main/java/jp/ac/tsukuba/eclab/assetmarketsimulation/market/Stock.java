@@ -8,7 +8,6 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Stock {
 
-    // ... (成员变量保持不变) ...
     public String stockId;
     public double currentPrice;
     public double open;
@@ -20,12 +19,12 @@ public class Stock {
     public double turnoverThisDay = 0;
     public double totalShares;
     public double liquidShares;
-    public double netAssetsPerShare;
-    public double eps;
+    public double netAssetsPerShare;    // BPS (Book Value Per Share)
+    public double eps;                  // EPS (Earnings Per Share, TTM)
     public double latestQuarterlyEps;
     public final double ipoPrice;
     public final Sector sector;
-    public final double earningsGrowth;
+    public final double earningsGrowth; // g (growth rate)
     public final double beta;
     public double peRatioTTM;
     public double pbRatio;
@@ -46,8 +45,6 @@ public class Stock {
     public Stock(int id) {
         this.stockId = "UTEC" + String.format("%06d", id);
 
-        // 【修改 V4.31】 使用对数正态分布生成 IPO 价格
-        // 使得大部分价格集中在 20-30 元，同时允许少量高价股
         this.ipoPrice = Config.nextLogNormal(
                 Config.STOCK_IPO_PRICE[0], Config.STOCK_IPO_PRICE[1],
                 Config.STOCK_IPO_PRICE[2], Config.STOCK_IPO_PRICE[3]
@@ -75,16 +72,18 @@ public class Stock {
         this.priceHistory52w.add(this.ipoPrice);
         this.peStatic = -1.0;
 
-        updateLimits();
+        // Use default policy for initial limits
+        updateLimits(Config.POLICY_PRICE_LIMIT_RATIO);
         resetDailyOHLC();
         updateDerivedData();
     }
 
-    // ... (其余方法 updateLimits, resetDailyOHLC 等保持不变) ...
-    public void updateLimits() {
-        double ratio = Config.MARKET_PRICE_LIMIT_RATIO;
-        this.limitUp = Math.round(this.currentPrice * (1.0 + ratio) * 100.0) / 100.0;
-        this.limitDown = Math.round(this.currentPrice * (1.0 - ratio) * 100.0) / 100.0;
+    /**
+     * 更新涨跌停价格 (使用 PolicySlot 的限价比例)
+     */
+    public void updateLimits(double priceLimitRatio) {
+        this.limitUp = Math.round(this.currentPrice * (1.0 + priceLimitRatio) * 100.0) / 100.0;
+        this.limitDown = Math.round(this.currentPrice * (1.0 - priceLimitRatio) * 100.0) / 100.0;
         if (this.limitDown < 0.01) this.limitDown = 0.01;
     }
 
@@ -114,6 +113,10 @@ public class Stock {
         double quarterlyEps = (this.eps / 4.0) * (1.0 + this.quarterlyGrowthRate + noise);
         this.latestQuarterlyEps = quarterlyEps;
         this.eps = this.eps * 0.75 + quarterlyEps;
+        // 更新每股净资产 (retained earnings)
+        if (this.latestQuarterlyEps > 0) {
+            this.netAssetsPerShare += this.latestQuarterlyEps * this.retainedEarningsRatio;
+        }
     }
 
     public void update52WeekHistory(double closePrice) {

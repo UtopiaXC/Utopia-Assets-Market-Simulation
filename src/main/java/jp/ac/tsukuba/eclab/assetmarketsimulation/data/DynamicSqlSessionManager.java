@@ -91,7 +91,6 @@ public class DynamicSqlSessionManager {
         configuration.addMapper(AgentAssetDailyMapper.class);
         configuration.addMapper(HoldingsMapper.class);
         configuration.addMapper(TradeRecordMapper.class);
-        configuration.addMapper(IpoMapper.class);
         configuration.addMapper(EventLogMapper.class);
 
         return new SqlSessionFactoryBuilder().build(configuration);
@@ -130,9 +129,8 @@ public class DynamicSqlSessionManager {
                 schema.createHoldingsSnapshotTable();
                 schema.createHoldingsDeltaTable();
                 schema.createTradeRecordTable();
-                schema.createIpoTable();
-                schema.createIpoSubscriptionTable();
                 schema.createEventLogTable();
+                schema.createLeverageRecordTable();
 
                 schema.createIndexStockDailyDay();
                 schema.createIndexStockDailyStock();

@@ -9,8 +9,8 @@ import java.util.List;
 
 public interface TradeRecordMapper {
 
-    @Insert("INSERT INTO trade_record (day, stock_id, buyer_id, seller_id, price, quantity) " +
-            "VALUES (#{day}, #{stockId}, #{buyerId}, #{sellerId}, #{price}, #{quantity})")
+    @Insert("INSERT INTO trade_record (day, stock_id, buyer_id, seller_id, price, quantity, influence_json) " +
+            "VALUES (#{day}, #{stockId}, #{buyerId}, #{sellerId}, #{price}, #{quantity}, #{influenceJson})")
     void insert(TradeRecordEntity record);
 
     @Select("SELECT t.*, s.stock_code, ab.agent_type as buyer_type, as2.agent_type as seller_type " +
@@ -37,6 +37,15 @@ public interface TradeRecordMapper {
             "WHERE (t.buyer_id = #{agentId} OR t.seller_id = #{agentId}) AND t.day = #{day} " +
             "ORDER BY t.rowid")
     List<TradeRecordEntity> selectByAgentAndDay(@Param("agentId") int agentId, @Param("day") int day);
+
+    @Select("SELECT t.*, s.stock_code, ab.agent_type as buyer_type, as2.agent_type as seller_type " +
+            "FROM trade_record t " +
+            "JOIN stock s ON t.stock_id = s.id " +
+            "JOIN agent ab ON t.buyer_id = ab.id " +
+            "JOIN agent as2 ON t.seller_id = as2.id " +
+            "WHERE (t.buyer_id = #{agentId} OR t.seller_id = #{agentId}) " +
+            "ORDER BY t.day, t.rowid")
+    List<TradeRecordEntity> selectAllByAgent(@Param("agentId") int agentId);
 
     @Select("SELECT t.day, COUNT(*) as quantity, SUM(t.price * t.quantity) as price " +
             "FROM trade_record t WHERE t.stock_id = #{stockId} " +

@@ -23,6 +23,7 @@ import {
 } from 'echarts/components'
 import { useSimulationStore } from '@/stores/simulation'
 import { marketApi } from '@/services/api'
+import { useCancellableFetch } from '@/composables/useCancellableFetch'
 
 // Register ECharts components
 use([
@@ -40,8 +41,7 @@ const router = useRouter()
 const store = useSimulationStore()
 
 // Data
-const loading = ref(false)
-const marketData = ref<any>(null)
+const { loading, data: marketData, fetch: fetchMarket } = useCancellableFetch<any>()
 
 // K-line chart option
 const klineOption = computed(() => {
@@ -159,16 +159,7 @@ function formatLargeNumber(n: number): string {
 
 async function fetchData() {
   if (!store.currentSimulation) return
-  
-  loading.value = true
-  try {
-    const data = await marketApi.getOverview(store.currentSimulation, store.currentDay)
-    marketData.value = data
-  } catch (error) {
-    console.error('Failed to fetch market data:', error)
-  } finally {
-    loading.value = false
-  }
+  await fetchMarket((signal) => marketApi.getOverview(store.currentSimulation!, store.currentDay, signal))
 }
 
 // Watch for changes

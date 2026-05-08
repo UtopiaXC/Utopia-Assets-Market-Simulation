@@ -78,7 +78,8 @@ public class TraderController {
     }
 
     /**
-     * NEW: Get trade records for a specific trader on a specific day
+     * Get trade records for a specific trader on a specific day.
+     * Each trade record includes influence_json showing which agents influenced this decision.
      * GET /api/simulations/{dbFile}/traders/{traderId}/trades?day=1
      */
     @GetMapping("/{traderId}/trades")
@@ -89,6 +90,23 @@ public class TraderController {
         try (SqlSession session = databaseService.openSession(dbFile)) {
             TradeRecordMapper mapper = session.getMapper(TradeRecordMapper.class);
             List<TradeRecordEntity> trades = mapper.selectByAgentAndDay(traderId, day);
+            return ResponseEntity.ok(trades);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get ALL trade records for a specific trader (across all days).
+     * GET /api/simulations/{dbFile}/traders/{traderId}/trades/all
+     */
+    @GetMapping("/{traderId}/trades/all")
+    public ResponseEntity<?> getAllTraderTrades(
+            @PathVariable String dbFile,
+            @PathVariable int traderId) {
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            TradeRecordMapper mapper = session.getMapper(TradeRecordMapper.class);
+            List<TradeRecordEntity> trades = mapper.selectAllByAgent(traderId);
             return ResponseEntity.ok(trades);
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));

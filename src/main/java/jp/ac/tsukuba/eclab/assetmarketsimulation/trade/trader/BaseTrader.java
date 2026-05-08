@@ -4,9 +4,11 @@ import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.Portfolio;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.ValuationService;
 import sim.engine.SimState;
 import sim.engine.Steppable;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public abstract class BaseTrader implements Steppable {
 
@@ -17,14 +19,23 @@ public abstract class BaseTrader implements Steppable {
     public double riskTolerance;
     public int maxStocks;
 
-    // 【新增 V4.33】 个人场外储蓄 (Private Savings)
-    // 这部分资金属于 Agent，但不参与交易，是安全的避风港。
+    // 社交网络参数 (Slides Page 4 & 8)
+    public double socialSensitivity; // β: Social Sensitivity
+    public int topKNeighbors;        // K: Top Neighbors Count
+
+    // 信念向量 φ_A: 每只股票的信念价格
+    private Map<Stock, Double> beliefs = new HashMap<>();
+
+    // 最新一次计算得到的社交影响 JSON 字符串
+    private String lastInfluenceJson = null;
+
+    // 个人场外储蓄 (Private Savings)
     public double privateSavings = 0;
 
-    // 【新增 V4.33】 初始投入记录 (用于计算保本和盈亏)
+    // 初始投入记录 (用于计算保本和盈亏)
     public double initialCapitalRecorded;
 
-    // 【新增 V4.33】 活跃状态标记 (false 表示已破产或离场)
+    // 活跃状态标记 (false 表示已破产或离场)
     private boolean isActive = true;
 
     private final double mutationRate;
@@ -45,9 +56,7 @@ public abstract class BaseTrader implements Steppable {
         this.traderType = type;
         this.portfolio = new Portfolio(initialCash);
 
-        // 记录初始本金
         this.initialCapitalRecorded = initialCash;
-
         this.riskTolerance = riskTolerance;
         this.maxStocks = maxStocks;
         this.minStocksLimit = minStocksLimit;
@@ -57,6 +66,10 @@ public abstract class BaseTrader implements Steppable {
         this.nextTradeStep = 0;
         this.mutationRate = Config.AGENT_MUTATION_RATE;
         this.mutationStdDev = Config.AGENT_MUTATION_STDDEV;
+
+        // 默认社交网络参数
+        this.socialSensitivity = Config.SOCIAL_SENSITIVITY_BETA;
+        this.topKNeighbors = Config.SOCIAL_TOP_K_NEIGHBORS;
     }
 
     public boolean isActive() {
@@ -67,9 +80,37 @@ public abstract class BaseTrader implements Steppable {
         this.isActive = active;
     }
 
+    /**
+     * 获取对某股票的当前信念价格
+     */
+    public double getBelief(Stock stock) {
+        return beliefs.getOrDefault(stock, stock.currentPrice);
+    }
+
+    /**
+     * 更新对某股票的信念
+     */
+    public void setBelief(Stock stock, double belief) {
+        beliefs.put(stock, belief);
+    }
+
+    public String getLastInfluenceJson() {
+        return lastInfluenceJson;
+    }
+
+    public void setLastInfluenceJson(String json) {
+        this.lastInfluenceJson = json;
+    }
+
+    /**
+     * 获取所有信念
+     */
+    public Map<Stock, Double> getBeliefs() {
+        return beliefs;
+    }
+
     @Override
     public void step(SimState state) {
-        // 如果已不活跃，直接跳过
         if (!isActive) return;
 
         StockMarketSim model = (StockMarketSim) state;
@@ -110,18 +151,16 @@ public abstract class BaseTrader implements Steppable {
 
     /**
      * 检查是否需要进行资金撤出 (止盈/保本)
-     * @return 需要转出到 privateSavings 的金额
      */
     public double checkWithdrawal() {
-        return 0; // 默认不撤资
+        return 0;
     }
 
     /**
      * 检查是否破产/绝望离场
-     * @return true 表示需要离场
      */
     public boolean isBankrupt() {
-        return false; // 默认不破产
+        return false;
     }
 
     protected void setNextTradeStep(StockMarketSim model) {
@@ -132,8 +171,6 @@ public abstract class BaseTrader implements Steppable {
 
     protected abstract Stock chooseStock(StockMarketSim model);
     protected abstract void makeDecision(StockMarketSim model, Stock stock);
-
-    public abstract double calculateIPOSubscription(Stock stock, ValuationService valuation, StockMarketSim model);
 
     public void mutateTraits(SimState state) {
         if (!isActive) return;

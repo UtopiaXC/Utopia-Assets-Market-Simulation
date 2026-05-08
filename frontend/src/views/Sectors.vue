@@ -17,6 +17,7 @@ import {
 } from 'echarts/components'
 import { useSimulationStore } from '@/stores/simulation'
 import { sectorApi } from '@/services/api'
+import { useCancellableFetch } from '@/composables/useCancellableFetch'
 
 // Register ECharts components
 use([
@@ -30,8 +31,7 @@ use([
 const store = useSimulationStore()
 
 // Data
-const loading = ref(false)
-const sectorData = ref<any>(null)
+const { loading, data: sectorData, fetch: fetchSectors } = useCancellableFetch<any>()
 
 // Sector colors
 const sectorColors = [
@@ -107,16 +107,7 @@ const peOption = computed(() => {
 
 async function fetchData() {
   if (!store.currentSimulation) return
-  
-  loading.value = true
-  try {
-    const data = await sectorApi.getStats(store.currentSimulation)
-    sectorData.value = data
-  } catch (error) {
-    console.error('Failed to fetch sector data:', error)
-  } finally {
-    loading.value = false
-  }
+  await fetchSectors((signal) => sectorApi.getStats(store.currentSimulation!, signal))
 }
 
 // Watch for changes

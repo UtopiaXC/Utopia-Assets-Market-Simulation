@@ -14,7 +14,12 @@ public class SimulationConfig {
     private int numStocks = Config.MARKET_NUM_STOCKS;
     private int simulationDays = Config.MARKET_SIMULATION_DAYS;
     private double indexBase = Config.MARKET_INDEX_BASE;
-    private double priceLimitRatio = Config.MARKET_PRICE_LIMIT_RATIO;
+    private double priceLimitRatio = Config.POLICY_PRICE_LIMIT_RATIO;
+
+    // ============ Policy Slot Parameters ============
+    private double circuitBreakerThreshold = Config.POLICY_CIRCUIT_BREAKER_THRESHOLD;
+    private double maxLeverageRatio = Config.POLICY_MAX_LEVERAGE_RATIO;
+    private int settlementDays = Config.POLICY_SETTLEMENT_DAYS;
 
     // ============ Time Parameters ============
     private int stepsPerDay = Config.MARKET_STEPS_PER_DAY;
@@ -29,6 +34,7 @@ public class SimulationConfig {
     private double institutionalCapitalRatio = Config.AGENT_INSTITUTIONAL_CAPITAL_RATIO;
     private double retailSubRatio = Config.AGENT_RETAIL_SUB_RATIO;
     private double noiseSubRatio = Config.AGENT_NOISE_SUB_RATIO;
+    private int socialTopK = Config.SOCIAL_TOP_K_NEIGHBORS;
 
     // ============ Scenario ============
     private String scenarioName = "EmptyScenario";
@@ -148,6 +154,14 @@ public class SimulationConfig {
         this.noiseSubRatio = noiseSubRatio;
     }
 
+    public int getSocialTopK() {
+        return socialTopK;
+    }
+
+    public void setSocialTopK(int socialTopK) {
+        this.socialTopK = socialTopK;
+    }
+
     public String getScenarioName() {
         return scenarioName;
     }
@@ -194,5 +208,30 @@ public class SimulationConfig {
 
     public void setStepDelay(long stepDelay) {
         this.stepDelay = stepDelay;
+    }
+
+    // ============ Policy Getters/Setters ============
+    public double getCircuitBreakerThreshold() {
+        return circuitBreakerThreshold;
+    }
+
+    public void setCircuitBreakerThreshold(double circuitBreakerThreshold) {
+        this.circuitBreakerThreshold = circuitBreakerThreshold;
+    }
+
+    public double getMaxLeverageRatio() {
+        return maxLeverageRatio;
+    }
+
+    public void setMaxLeverageRatio(double maxLeverageRatio) {
+        this.maxLeverageRatio = maxLeverageRatio;
+    }
+
+    public int getSettlementDays() {
+        return settlementDays;
+    }
+
+    public void setSettlementDays(int settlementDays) {
+        this.settlementDays = settlementDays;
     }
 }

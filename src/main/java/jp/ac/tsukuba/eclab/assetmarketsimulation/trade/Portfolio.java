@@ -1,15 +1,19 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.trade;
 
+import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
 import java.util.HashMap;
 import java.util.Map;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.Position;
 
 public class Portfolio {
 
-    public double cash; // 可用现金
-    public double reservedCash; // 挂单冻结的现金
+    public double cash;          // 可用现金
+    public double reservedCash;  // 挂单冻结的现金
+    public double borrowedCash;  // 杠杆借入的现金 (配资)
     public Map<Stock, Position> positions;
+
+    // 当前结算天数 (从 PolicySlot 同步)
+    private int settlementDays = 1;
 
     // 浮点数容差
     private static final double EPSILON = 1e-9;
@@ -17,7 +21,16 @@ public class Portfolio {
     public Portfolio(double initialCash) {
         this.cash = initialCash;
         this.reservedCash = 0.0;
+        this.borrowedCash = 0.0;
         this.positions = new HashMap<>();
+    }
+
+    public void setSettlementDays(int days) {
+        this.settlementDays = days;
+        // 更新已有持仓的结算天数
+        for (Position p : positions.values()) {
+            p.updateSettlementDays(days);
+        }
     }
 
     public double getStockQuantity(Stock stock) {
@@ -31,7 +44,7 @@ public class Portfolio {
     }
 
     /**
-     * 【新增 V4.29】 初始化分配股票
+     * 初始化分配股票 (模拟开始时)
      */
     public boolean initializePosition(Stock stock, double quantity, double price) {
         double cost = quantity * price;
@@ -45,9 +58,10 @@ public class Portfolio {
 
         Position p = positions.get(stock);
         if (p == null) {
-            p = new Position(quantity, quantity);
+            p = new Position(quantity, quantity, price, settlementDays);
             positions.put(stock, p);
         } else {
+            p.updateCostBasis(quantity, price);
             p.totalQuantity += quantity;
             p.availableQuantity += quantity;
         }
@@ -56,11 +70,12 @@ public class Portfolio {
     }
 
     /**
-     * 【新增 V4.33 修复】 清空投资组合 (用于破产清算)
+     * 清空投资组合 (用于破产清算)
      */
     public void clear() {
         this.cash = 0;
         this.reservedCash = 0;
+        this.borrowedCash = 0;
         this.positions.clear();
     }
 
@@ -108,11 +123,15 @@ public class Portfolio {
 
         Position p = positions.get(stock);
         if (p == null) {
-            p = new Position(quantity, 0.0);
+            p = new Position(quantity, 0.0, tradePrice, settlementDays);
             positions.put(stock, p);
         } else {
+            p.updateCostBasis(quantity, tradePrice);
             p.totalQuantity += quantity;
         }
+
+        // T+N: 新买入进入待结算队列
+        p.addPendingSettlement(quantity);
 
         stock.volumeThisDay += quantity;
         stock.turnoverThisDay += actualCost;
@@ -143,17 +162,65 @@ public class Portfolio {
         return stockValue;
     }
 
+    /**
+     * 总资产 (不扣除借款)
+     */
     public double getTotalAssets() {
         return this.cash + this.reservedCash + getTotalStockValue();
+    }
+
+    /**
+     * 净权益 (扣除借款后)
+     */
+    public double getNetEquity() {
+        return getTotalAssets() - this.borrowedCash;
+    }
+
+    /**
+     * 保证金率: 总资产 / 借款
+     * 如果没有借款返回 Double.MAX_VALUE
+     */
+    public double getMarginRatio() {
+        if (borrowedCash <= 0) return Double.MAX_VALUE;
+        return getTotalAssets() / borrowedCash;
     }
 
     public Map<Stock, Position> getPositions() {
         return this.positions;
     }
 
+    /**
+     * 每日结算: 推进所有持仓的 T+N 队列
+     */
     public void settleDay() {
         for (Position p : positions.values()) {
-            p.availableQuantity = p.totalQuantity;
+            p.settleDay();
         }
+    }
+
+    /**
+     * 计算各板块持仓权重向量 (用于社交网络相似度计算)
+     * 返回按 Sector.values() 顺序的权重数组
+     */
+    public double[] getSectorAllocationVector() {
+        Sector[] sectors = Sector.values();
+        double[] weights = new double[sectors.length];
+        double totalValue = getTotalStockValue();
+
+        if (totalValue <= 0) return weights;
+
+        for (Map.Entry<Stock, Position> entry : positions.entrySet()) {
+            Stock stock = entry.getKey();
+            double value = stock.currentPrice * entry.getValue().totalQuantity;
+            int sectorIdx = stock.sector.ordinal();
+            weights[sectorIdx] += value;
+        }
+
+        // 归一化
+        for (int i = 0; i < weights.length; i++) {
+            weights[i] /= totalValue;
+        }
+
+        return weights;
     }
 }

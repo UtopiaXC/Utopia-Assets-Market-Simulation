@@ -3,18 +3,18 @@ package jp.ac.tsukuba.eclab.assetmarketsimulation.api;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationService;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationSession;
-import jp.ac.tsukuba.eclab.assetmarketsimulation.control.event.InterventionEvent;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * REST API for simulation control
+ * REST API for simulation control and policy management
  */
 @RestController
 @RequestMapping("/api/control")
@@ -22,6 +22,10 @@ public class SimulationControlController {
 
     @Autowired
     private SimulationService simulationService;
+
+    // =====================================================
+    // Simulation Lifecycle
+    // =====================================================
 
     /**
      * Get current simulation status
@@ -103,7 +107,7 @@ public class SimulationControlController {
      */
     @GetMapping("/sectors")
     public ResponseEntity<List<String>> getSectors() {
-        List<String> sectors = java.util.Arrays.stream(Sector.values())
+        List<String> sectors = Arrays.stream(Sector.values())
                 .map(Sector::name)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(sectors);
@@ -119,160 +123,48 @@ public class SimulationControlController {
     }
 
     // =====================================================
-    // Event Injection APIs
+    // Policy Slot APIs
     // =====================================================
 
     /**
-     * Get pending events
-     * GET /api/control/events/pending
+     * Get current policy slot values
+     * GET /api/control/policy
      */
-    @GetMapping("/events/pending")
-    public ResponseEntity<List<Map<String, Object>>> getPendingEvents() {
-        List<Map<String, Object>> events = simulationService.getPendingEvents()
-                .stream()
-                .map(InterventionEvent::toMap)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(events);
+    @GetMapping("/policy")
+    public ResponseEntity<Map<String, Object>> getCurrentPolicy() {
+        return ResponseEntity.ok(simulationService.getCurrentPolicy());
     }
 
-    /**
-     * Get event history
-     * GET /api/control/events/history
-     */
-    @GetMapping("/events/history")
-    public ResponseEntity<List<Map<String, Object>>> getEventHistory() {
-        List<Map<String, Object>> events = simulationService.getEventHistory()
-                .stream()
-                .map(InterventionEvent::toMap)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(events);
-    }
+
 
     /**
-     * Cancel a pending event
-     * DELETE /api/control/events/{eventId}
+     * Inject a scheduled policy change event.
+     * The event will execute at the specified day during simulation.
+     * POST /api/control/policy/inject
+     *
+     * Body: { "day": 100, "policyType": "CIRCUIT_BREAKER", "value": 0.05, "description": "..." }
+     * Valid policyTypes: PRICE_LIMIT, CIRCUIT_BREAKER, LEVERAGE, SETTLEMENT
      */
-    @DeleteMapping("/events/{eventId}")
-    public ResponseEntity<?> cancelEvent(@PathVariable String eventId) {
-        boolean cancelled = simulationService.cancelEvent(eventId);
-        return ResponseEntity.ok(Map.of("cancelled", cancelled));
-    }
-
-    /**
-     * Inject rate cut event
-     * POST /api/control/events/rate-cut
-     */
-    @PostMapping("/events/rate-cut")
-    public ResponseEntity<?> injectRateCut(@RequestBody Map<String, Object> params) {
-        int targetDay = ((Number) params.getOrDefault("targetDay", 0)).intValue();
-        double liquidity = ((Number) params.getOrDefault("liquidityPerAgent", 1000000)).doubleValue();
-        double riskBoost = ((Number) params.getOrDefault("riskBoost", 0.1)).doubleValue();
-
-        if (targetDay <= 0) {
-            SimulationSession session = simulationService.getCurrentSession();
-            targetDay = session != null ? session.getCurrentDay() + 1 : 1;
-        }
-
-        String eventId = simulationService.injectRateCut(targetDay, liquidity, riskBoost);
-        return ResponseEntity.ok(Map.of("eventId", eventId, "targetDay", targetDay));
-    }
-
-    /**
-     * Inject rate hike event
-     * POST /api/control/events/rate-hike
-     */
-    @PostMapping("/events/rate-hike")
-    public ResponseEntity<?> injectRateHike(@RequestBody Map<String, Object> params) {
-        int targetDay = ((Number) params.getOrDefault("targetDay", 0)).intValue();
-        double liquidityRatio = ((Number) params.getOrDefault("liquidityRatio", 0.1)).doubleValue();
-        double riskDrop = ((Number) params.getOrDefault("riskDrop", 0.1)).doubleValue();
-
-        if (targetDay <= 0) {
-            SimulationSession session = simulationService.getCurrentSession();
-            targetDay = session != null ? session.getCurrentDay() + 1 : 1;
-        }
-
-        String eventId = simulationService.injectRateHike(targetDay, liquidityRatio, riskDrop);
-        return ResponseEntity.ok(Map.of("eventId", eventId, "targetDay", targetDay));
-    }
-
-    /**
-     * Inject sector sentiment event
-     * POST /api/control/events/sector-sentiment
-     */
-    @PostMapping("/events/sector-sentiment")
-    public ResponseEntity<?> injectSectorSentiment(@RequestBody Map<String, Object> params) {
-        int targetDay = ((Number) params.getOrDefault("targetDay", 0)).intValue();
-        String sector = (String) params.getOrDefault("sector", "TECH");
-        double multiplier = ((Number) params.getOrDefault("multiplier", 1.5)).doubleValue();
-
-        if (targetDay <= 0) {
-            SimulationSession session = simulationService.getCurrentSession();
-            targetDay = session != null ? session.getCurrentDay() + 1 : 1;
-        }
-
+    @PostMapping("/policy/inject")
+    public ResponseEntity<?> injectPolicyEvent(@RequestBody Map<String, Object> params) {
         try {
-            String eventId = simulationService.injectSectorSentiment(targetDay, sector, multiplier);
-            return ResponseEntity.ok(Map.of("eventId", eventId, "targetDay", targetDay));
+            int day = ((Number) params.get("day")).intValue();
+            String policyType = (String) params.get("policyType");
+            double value = ((Number) params.get("value")).doubleValue();
+            String description = (String) params.getOrDefault("description",
+                    "Scheduled policy change: " + policyType + " -> " + value + " on day " + day);
+
+            simulationService.injectPolicyEvent(day, policyType, value, description);
+            return ResponseEntity.ok(Map.of(
+                    "day", day,
+                    "policyType", policyType,
+                    "value", value,
+                    "injected", true
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid sector: " + sector));
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid policy type: " + e.getMessage()));
         }
-    }
-
-    /**
-     * Inject sector fundamental event
-     * POST /api/control/events/sector-fundamental
-     */
-    @PostMapping("/events/sector-fundamental")
-    public ResponseEntity<?> injectSectorFundamental(@RequestBody Map<String, Object> params) {
-        int targetDay = ((Number) params.getOrDefault("targetDay", 0)).intValue();
-        String sector = (String) params.getOrDefault("sector", "CONSUMER");
-        double epsChange = ((Number) params.getOrDefault("epsChange", -0.3)).doubleValue();
-
-        if (targetDay <= 0) {
-            SimulationSession session = simulationService.getCurrentSession();
-            targetDay = session != null ? session.getCurrentDay() + 1 : 1;
-        }
-
-        try {
-            String eventId = simulationService.injectSectorFundamental(targetDay, sector, epsChange);
-            return ResponseEntity.ok(Map.of("eventId", eventId, "targetDay", targetDay));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid sector: " + sector));
-        }
-    }
-
-    // =====================================================
-    // FAVAR/EA/LLM Placeholder APIs
-    // =====================================================
-
-    /**
-     * Apply FAVAR matrix intervention (placeholder)
-     * POST /api/control/favar
-     */
-    @PostMapping("/favar")
-    public ResponseEntity<?> applyFavarIntervention(@RequestBody Map<String, Object> params) {
-        // TODO: Parse matrix from request body
-        return ResponseEntity.ok(Map.of(
-                "message", "FAVAR intervention API ready, implementation pending",
-                "status", "NOT_IMPLEMENTED"));
-    }
-
-    /**
-     * Get market context for LLM (placeholder)
-     * GET /api/control/llm/context
-     */
-    @GetMapping("/llm/context")
-    public ResponseEntity<Map<String, Object>> getLlmContext() {
-        return ResponseEntity.ok(simulationService.getMarketContext());
-    }
-
-    /**
-     * Get agent state for LLM (placeholder)
-     * GET /api/control/llm/agent/{agentId}
-     */
-    @GetMapping("/llm/agent/{agentId}")
-    public ResponseEntity<Map<String, Object>> getAgentState(@PathVariable int agentId) {
-        return ResponseEntity.ok(simulationService.getAgentState(agentId));
     }
 }

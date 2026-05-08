@@ -55,7 +55,8 @@ public interface SchemaMapper {
             "total_market_cap REAL, " +
             "amplitude REAL, turnover_rate REAL, " +
             "social_wealth_pool REAL, " +
-            "active_agents INT)")
+            "active_agents INT, " +
+            "circuit_breaker_triggered BOOLEAN DEFAULT 0)")
     void createMarketDailyTable();
 
     @Update("CREATE TABLE IF NOT EXISTS stock_daily (" +
@@ -78,6 +79,9 @@ public interface SchemaMapper {
             "cash REAL, reserved_cash REAL, " +
             "private_savings REAL, stock_value REAL, " +
             "total_assets REAL, risk_tolerance REAL, " +
+            "borrowed_cash REAL DEFAULT 0, " +
+            "net_equity REAL DEFAULT 0, " +
+            "margin_ratio REAL DEFAULT 0, " +
             "is_active BOOLEAN, " +
             "PRIMARY KEY (day, agent_id), " +
             "FOREIGN KEY (agent_id) REFERENCES agent(id))")
@@ -105,27 +109,11 @@ public interface SchemaMapper {
             "seller_id INTEGER NOT NULL, " +
             "price REAL NOT NULL, " +
             "quantity REAL NOT NULL, " +
+            "influence_json TEXT, " +
             "FOREIGN KEY (stock_id) REFERENCES stock(id), " +
             "FOREIGN KEY (buyer_id) REFERENCES agent(id), " +
             "FOREIGN KEY (seller_id) REFERENCES agent(id))")
     void createTradeRecordTable();
-
-    @Update("CREATE TABLE IF NOT EXISTS ipo (" +
-            "stock_id INTEGER PRIMARY KEY, " +
-            "ipo_price REAL, " +
-            "available_shares REAL, " +
-            "demand_shares REAL, " +
-            "oversubscription_ratio REAL, " +
-            "FOREIGN KEY (stock_id) REFERENCES stock(id))")
-    void createIpoTable();
-
-    @Update("CREATE TABLE IF NOT EXISTS ipo_subscription (" +
-            "stock_id INTEGER NOT NULL, " +
-            "agent_id INTEGER NOT NULL, " +
-            "demand_shares REAL, " +
-            "allocated_shares REAL, " +
-            "PRIMARY KEY (stock_id, agent_id))")
-    void createIpoSubscriptionTable();
 
     @Update("CREATE TABLE IF NOT EXISTS event_log (" +
             "event_id TEXT PRIMARY KEY, " +
@@ -135,6 +123,16 @@ public interface SchemaMapper {
             "parameters_json TEXT, " +
             "description TEXT)")
     void createEventLogTable();
+
+    @Update("CREATE TABLE IF NOT EXISTS leverage_record (" +
+            "day INTEGER NOT NULL, " +
+            "agent_id INTEGER NOT NULL, " +
+            "borrowed_amount REAL, " +
+            "total_assets REAL, " +
+            "margin_ratio REAL, " +
+            "event_type TEXT, " +
+            "PRIMARY KEY (day, agent_id))")
+    void createLeverageRecordTable();
 
     // Indexes for query performance
     @Update("CREATE INDEX IF NOT EXISTS idx_stock_daily_day ON stock_daily(day)")

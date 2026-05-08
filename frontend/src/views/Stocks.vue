@@ -12,12 +12,13 @@ import {
 } from 'naive-ui'
 import { useSimulationStore } from '@/stores/simulation'
 import { stockApi } from '@/services/api'
+import { useCancellableFetch } from '@/composables/useCancellableFetch'
 
 const router = useRouter()
 const store = useSimulationStore()
 
 // Data
-const loading = ref(false)
+const { loading, fetch: fetchStocks } = useCancellableFetch<any[]>()
 const stocks = ref<any[]>([])
 const searchQuery = ref('')
 const selectedSector = ref<string | null>(null)
@@ -93,15 +94,10 @@ function formatLargeNumber(n: number): string {
 async function fetchData() {
   if (!store.currentSimulation) return
   
-  loading.value = true
-  try {
-    const data = await stockApi.getList(store.currentSimulation, store.currentDay)
-    stocks.value = data as any[]
+  const data = await fetchStocks((signal) => stockApi.getList(store.currentSimulation!, store.currentDay, signal))
+  if (data) {
+    stocks.value = data
     applyFilters()
-  } catch (error) {
-    console.error('Failed to fetch stocks:', error)
-  } finally {
-    loading.value = false
   }
 }
 

@@ -6,22 +6,31 @@ public final class Config {
 
     private Config() {}
 
-    // 市场参数
-    // Market Config
+    // ============================================================
+    // 市场参数 / Market Config
+    // ============================================================
     public static final int MARKET_NUM_STOCKS = 50;
     public static final int MARKET_SIMULATION_DAYS = 1000;
     public static final double MARKET_INDEX_BASE = 3000.0;
-    public static final double MARKET_PRICE_LIMIT_RATIO = 0.10;
 
-    // 时间参数
-    // Time Config
+    // 时间参数 / Time Config
     public static final int MARKET_STEPS_PER_DAY = 22;
     public static final int MARKET_LUNCH_BREAK_START = 8;
     public static final int MARKET_LUNCH_BREAK_END = 14;
     public static final int MARKET_STEPS_PER_QUARTER = 1386;
 
-    // 股票基础参数
-    // Stocks Config
+    // ============================================================
+    // 政策插槽默认值 / Policy Slot Defaults
+    // P = [L_limit, Lev_max, Th_halt, N_settle]
+    // ============================================================
+    public static final double POLICY_PRICE_LIMIT_RATIO = 0.10;           // ±10%
+    public static final double POLICY_CIRCUIT_BREAKER_THRESHOLD = 0.07;   // 7% index drop → halt
+    public static final double POLICY_MAX_LEVERAGE_RATIO = 2.0;           // 2x leverage
+    public static final int POLICY_SETTLEMENT_DAYS = 1;                   // T+1
+
+    // ============================================================
+    // 股票基础参数 / Stocks Config
+    // ============================================================
     public static final double[] STOCK_IPO_PRICE = {3.2, 0.8, 0.1, 3000.0};
     public static final double[] STOCK_IPO_NET_ASSETS = {20.0, 10.0, 1.0, 100.0};
     public static final double[] STOCK_IPO_EPS = {2.2, 2.0, -5.0, 15.0};
@@ -34,21 +43,21 @@ public final class Config {
     public static final double STOCK_FUNDAMENTALS_EPS_VOLATILITY = 0.15;
     public static final double STOCK_FUNDAMENTALS_RETAINED_EARNINGS_RATIO = 0.70;
 
-
-    // 经济体参数
-    // Economy Config
+    // ============================================================
+    // 经济体参数 / Economy Config
+    // ============================================================
     public static final double ECONOMY_TOTAL_CAPITAL_POOL = 3.5e11;
     public static final int ECONOMY_TOTAL_AGENTS = 5000;
 
-    // 宏观与生命周期参数
-    // Macroeconomy and Lifecycle Config for Agents
+    // 宏观与生命周期参数 / Lifecycle Config
     public static final int ECONOMY_TARGET_POPULATION = 5000;
-    public static final double ECONOMY_SOCIAL_POOL_RATIO = 2.0; // 初始社会池是场内资金的2倍
-    public static final double ECONOMY_FOMO_SENSITIVITY = 5.0;  // 市场每涨1%，生成概率增加多少
-    public static final double ECONOMY_BASE_ENTRY_PROB = 0.01;  // 缺人时的基础补充概率
+    public static final double ECONOMY_SOCIAL_POOL_RATIO = 2.0;
+    public static final double ECONOMY_FOMO_SENSITIVITY = 5.0;
+    public static final double ECONOMY_BASE_ENTRY_PROB = 0.01;
 
-    // Agents 基础比例与参数
-    // Agents Config
+    // ============================================================
+    // Agents 基础比例与参数 / Agents Config
+    // ============================================================
     public static final double AGENT_INSTITUTIONAL_POPULATION_RATIO = 0.05;
     public static final double AGENT_INSTITUTIONAL_CAPITAL_RATIO = 0.70;
     public static final double AGENT_RETAIL_SUB_RATIO = 0.60;
@@ -70,52 +79,72 @@ public final class Config {
     public static final int AGENT_NOISE_TRADE_INTERVAL_MIN_DAYS = 1;
     public static final int AGENT_NOISE_TRADE_INTERVAL_MAX_DAYS = 3;
 
-    // 行为参数
-    // Behaviors Config
+    // 行为参数 / Behaviors Config
     public static final double AGENT_MUTATION_RATE = 0.01;
     public static final double AGENT_MUTATION_STDDEV = 0.05;
 
-    // 机构行为
-    // Behaviors of Institutions
-    public static final double AGENT_INSTITUTIONAL_IPO_GOOD_STOCK_PERCENT = 0.10;
-    public static final double AGENT_INSTITUTIONAL_IPO_OK_STOCK_PERCENT = 0.10;
-    public static final double AGENT_INSTITUTIONAL_VALUATION_FUNDAMENTAL_WEIGHT = 0.8;
-    public static final double AGENT_INSTITUTIONAL_VALUATION_TREND_WEIGHT = 0.2;
-    public static final double AGENT_INSTITUTIONAL_VALUATION_NOISE_STDDEV = 0.05;
-    public static final int AGENT_INSTITUTIONAL_VALUATION_LOOKBACK_DAYS = 20;
-    public static final double AGENT_INSTITUTIONAL_BANKRUPTCY_THRESHOLD = 0.10; // 资产剩10%清算
+    // 机构行为 / Institutional Behaviors
+    public static final double AGENT_INSTITUTIONAL_BANKRUPTCY_THRESHOLD = 0.10;
 
-    // 普通散户行为
-    // Behaviors of Normal Retail Traders
-    public static final double AGENT_RETAIL_IPO_HOT_SECTOR_PERCENT = 0.10;
-    public static final double AGENT_RETAIL_IPO_NORMAL_PERCENT = 0.10;
-    public static final double AGENT_RETAIL_VALUATION_FUNDAMENTAL_WEIGHT = 0.5;
-    public static final double AGENT_RETAIL_VALUATION_TREND_WEIGHT = 0.5;
-    public static final double AGENT_RETAIL_VALUATION_NOISE_STDDEV = 0.10;
-    public static final int AGENT_RETAIL_VALUATION_LOOKBACK_DAYS = 10;
+    // 散户进出场参数 / Retail Trader Lifecycle
+    public static final double AGENT_RETAIL_DESPAIR_THRESHOLD = 0.20;
+    public static final double AGENT_RETAIL_PRINCIPAL_SECURE_BUFFER = 1.05;
+    public static final double AGENT_RETAIL_PROFIT_SKIM_TRIGGER = 0.50;
+    public static final double AGENT_RETAIL_PROFIT_SKIM_RATIO = 0.20;
 
-    // 散户进出场参数
-    // Configs for entering and exiting of Retail Traders
-    public static final double AGENT_RETAIL_DESPAIR_THRESHOLD = 0.20; // 亏损到剩20%离场
-    public static final double AGENT_RETAIL_PRINCIPAL_SECURE_BUFFER = 1.05; // 盈利5%后开始抽走本金
-    public static final double AGENT_RETAIL_PROFIT_SKIM_TRIGGER = 0.50; // 现金占总资产50%时触发抽水
-    public static final double AGENT_RETAIL_PROFIT_SKIM_RATIO = 0.20; // 每次抽走超额现金的20%
+    // ============================================================
+    // 估值模型参数 / Valuation Model Config (Slides Page 7)
+    // ============================================================
+    public static final double VALUATION_PB_MULTIPLIER = 1.5;   // M_PB
+    public static final double VALUATION_PE_MULTIPLIER = 25.0;  // M_PE
 
-    // 噪音散户行为
-    // Behaviors of Noise Retail Traders
-    public static final double AGENT_NOISE_IPO_MIN_PERCENT = 0.10;
-    public static final double AGENT_NOISE_IPO_MAX_PERCENT = 0.10;
-    public static final double AGENT_NOISE_VALUATION_NOISE_STDDEV = 0.05;
-
-    // 估值模型参数
-    // Valuation Model Config
-    public static final double VALUATION_PB_MULTIPLIER = 1.5;
-    public static final double VALUATION_PE_MULTIPLIER = 25.0;
+    // 板块加成 / Sector bonus
     public static final double VALUATION_SECTOR_TECH = 1.3;
     public static final double VALUATION_SECTOR_HEALTHCARE = 1.2;
     public static final double VALUATION_SECTOR_CONSUMER = 1.1;
     public static final double VALUATION_SECTOR_FINANCE = 0.9;
     public static final double VALUATION_SECTOR_INDUSTRY = 1.0;
+    public static final double VALUATION_SECTOR_ENERGY = 1.0;
+
+    // 三因子权重 (Base weights per trader type)
+    // Institutional: 基本面主导
+    public static final double VALUATION_FUND_WEIGHT_INST = 0.80;
+    public static final double VALUATION_SOCIAL_WEIGHT_INST = 0.10;
+    public static final double VALUATION_TREND_WEIGHT_INST = 0.10;
+    public static final double VALUATION_NOISE_STDDEV_INST = 0.05;
+    public static final int VALUATION_LOOKBACK_DAYS_INST = 20;
+
+    // Retail: 均衡
+    public static final double VALUATION_FUND_WEIGHT_RETAIL = 0.50;
+    public static final double VALUATION_SOCIAL_WEIGHT_RETAIL = 0.25;
+    public static final double VALUATION_TREND_WEIGHT_RETAIL = 0.25;
+    public static final double VALUATION_NOISE_STDDEV_RETAIL = 0.10;
+    public static final int VALUATION_LOOKBACK_DAYS_RETAIL = 10;
+
+    // Noise: 趋势 + 社交主导
+    public static final double VALUATION_FUND_WEIGHT_NOISE = 0.10;
+    public static final double VALUATION_SOCIAL_WEIGHT_NOISE = 0.30;
+    public static final double VALUATION_TREND_WEIGHT_NOISE = 0.60;
+    public static final double VALUATION_NOISE_STDDEV_NOISE = 0.20;
+    public static final int VALUATION_LOOKBACK_DAYS_NOISE = 5;
+
+    // ============================================================
+    // 社交网络参数 / Social Network Config (Slides Page 8)
+    // ============================================================
+    public static final int SOCIAL_TOP_K_NEIGHBORS = 5;
+    public static final double SOCIAL_SENSITIVITY_BETA = 0.3;
+    public static final int SOCIAL_NETWORK_REBUILD_INTERVAL = 20; // days
+
+    // ============================================================
+    // 杠杆/配资参数 / Leverage Config
+    // ============================================================
+    public static final double LEVERAGE_MARGIN_CALL_RATIO = 1.30;    // 130% maintenance margin
+    public static final double LEVERAGE_INTEREST_RATE_DAILY = 0.0003; // ~10% annually
+    public static final double LEVERAGE_REQUEST_PROB = 0.05;          // 每次交易中请求配资的概率
+
+    // ============================================================
+    // Utility Methods
+    // ============================================================
 
     public static double nextGaussian(double mean, double stddev, double min, double max) {
         double value = mean + ThreadLocalRandom.current().nextGaussian() * stddev;

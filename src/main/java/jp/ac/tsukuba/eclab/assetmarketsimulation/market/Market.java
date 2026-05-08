@@ -1,11 +1,9 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.market;
 
-// MASON
 import sim.engine.SimState;
 import sim.engine.Steppable;
 import sim.util.Bag;
 
-// Java
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,10 +12,10 @@ import java.util.PriorityQueue;
 import java.util.Comparator;
 import java.util.Iterator;
 
-// 本项目
 import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.data.SimulationDataLogger;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicySlot;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 
 public class Market implements Steppable {
@@ -50,7 +48,7 @@ public class Market implements Steppable {
     private Map<Stock, OrderBook> allOrderBooks;
     private Map<Stock, ArrayList<Double>> priceHistories;
 
-    // 【新增 V4.33】 市场指数历史，用于计算 FOMO
+    // 市场指数历史，用于计算 FOMO 和趋势
     private ArrayList<Double> marketIndexHistory = new ArrayList<>();
 
     private long currentStep = 0;
@@ -75,6 +73,12 @@ public class Market implements Steppable {
 
     private StockMarketSim model;
 
+    // 政策插槽
+    public PolicySlot policySlot;
+
+    // 熔断状态
+    private boolean circuitBreakerTriggered = false;
+
     // 订单有效期 (3 天)
     private final long ORDER_EXPIRY_STEPS;
 
@@ -86,6 +90,7 @@ public class Market implements Steppable {
         this.allOrderBooks = new HashMap<>();
         this.priceHistories = new HashMap<>();
         this.marketIndexHistory = new ArrayList<>();
+        this.policySlot = new PolicySlot();
 
         this.STEPS_PER_DAY = stepsPerDay;
 
@@ -94,20 +99,13 @@ public class Market implements Steppable {
             this.LUNCH_BREAK_END = Config.MARKET_LUNCH_BREAK_END;
             this.STEPS_PER_QUARTER = Config.MARKET_STEPS_PER_QUARTER;
         } else {
-            // Custom steps implies continuous trading (no lunch break simulation)
-            // TODO: In the future, if we want to simulate idle steps (e.g. for news
-            // propagation during lunch),
-            // we can calculate LUNCH_BREAK_START/END here based on time mapping.
-            // Currently we skip lunch steps to focus on trading efficiency.
-            this.LUNCH_BREAK_START = stepsPerDay; // Always trading
+            this.LUNCH_BREAK_START = stepsPerDay;
             this.LUNCH_BREAK_END = stepsPerDay;
-            // Scale quarter steps
             this.STEPS_PER_QUARTER = (int) (Config.MARKET_STEPS_PER_QUARTER
                     * ((double) stepsPerDay / Config.MARKET_STEPS_PER_DAY));
         }
 
         this.INDEX_BASE = Config.MARKET_INDEX_BASE;
-
         this.ORDER_EXPIRY_STEPS = (long) 3 * this.STEPS_PER_DAY;
     }
 
@@ -133,7 +131,6 @@ public class Market implements Steppable {
         this.indexHigh = INDEX_BASE;
         this.indexLow = INDEX_BASE;
 
-        // 初始化指数历史
         this.marketIndexHistory.add(INDEX_BASE);
     }
 
@@ -142,13 +139,46 @@ public class Market implements Steppable {
     }
 
     public boolean isTradingHours() {
+        // 熔断时停止交易
+        if (circuitBreakerTriggered) return false;
+
         long stepInDay = currentStep % STEPS_PER_DAY;
         return (stepInDay < LUNCH_BREAK_START) || (stepInDay >= LUNCH_BREAK_END);
     }
 
+    public boolean isCircuitBreakerTriggered() {
+        return circuitBreakerTriggered;
+    }
+
+    /**
+     * 检查熔断条件
+     * 基于中国2016年熔断机制: 当日指数跌幅超过阈值时触发
+     */
+    private void checkCircuitBreaker() {
+        if (circuitBreakerTriggered) return;
+        if (indexOpen <= 0) return;
+
+        double dayReturn = (marketIndex - indexOpen) / indexOpen;
+        double threshold = policySlot.getCircuitBreakerThreshold();
+
+        if (threshold > 0 && Math.abs(dayReturn) >= threshold) {
+            circuitBreakerTriggered = true;
+            System.out.println(">>> [CIRCUIT BREAKER] TRIGGERED! Index change: " +
+                    String.format("%.2f%%", dayReturn * 100) +
+                    " (threshold: ±" + String.format("%.2f%%", threshold * 100) + ")");
+
+            // 记录事件
+            SimulationDataLogger logger = model.dbLogger;
+            if (logger != null) {
+                logger.logEvent("CIRCUIT_BREAKER", getCurrentDay(),
+                        String.format("Index change %.2f%% exceeded threshold ±%.2f%%",
+                                dayReturn * 100, threshold * 100));
+            }
+        }
+    }
+
     public synchronized void submitBuyOrder(BaseTrader trader, Stock stock, double quantity, double price) {
-        if (!isTradingHours())
-            return;
+        if (!isTradingHours()) return;
         if (price > stock.limitUp || price < stock.limitDown) {
             return;
         }
@@ -159,8 +189,7 @@ public class Market implements Steppable {
     }
 
     public synchronized void submitSellOrder(BaseTrader trader, Stock stock, double quantity, double price) {
-        if (!isTradingHours())
-            return;
+        if (!isTradingHours()) return;
         if (price > stock.limitUp || price < stock.limitDown) {
             return;
         }
@@ -171,8 +200,7 @@ public class Market implements Steppable {
     }
 
     private void pruneExpiredOrders() {
-        if (ORDER_EXPIRY_STEPS <= 0)
-            return;
+        if (ORDER_EXPIRY_STEPS <= 0) return;
 
         for (OrderBook ob : allOrderBooks.values()) {
             Iterator<Order> buyIter = ob.buyOrders.iterator();
@@ -207,10 +235,12 @@ public class Market implements Steppable {
             this.totalTurnoverThisDay = 0;
             this.marketAmplitude = 0;
             this.marketTurnoverRate = 0;
+            this.circuitBreakerTriggered = false; // 重置熔断
 
+            double priceLimitRatio = policySlot.getPriceLimitRatio();
             for (int i = 0; i < stocksBag.size(); i++) {
                 Stock s = (Stock) stocksBag.get(i);
-                s.updateLimits();
+                s.updateLimits(priceLimitRatio);
                 s.resetDailyOHLC();
             }
 
@@ -238,16 +268,13 @@ public class Market implements Steppable {
             while (true) {
                 Order bestBuy = ob.buyOrders.peek();
                 Order bestSell = ob.sellOrders.peek();
-                if (bestBuy == null || bestSell == null)
-                    break;
+                if (bestBuy == null || bestSell == null) break;
 
                 if (bestBuy.price >= bestSell.price) {
                     double tradePrice = (bestBuy.timestamp < bestSell.timestamp) ? bestBuy.price : bestSell.price;
 
-                    if (tradePrice > stock.limitUp)
-                        tradePrice = stock.limitUp;
-                    if (tradePrice < stock.limitDown)
-                        tradePrice = stock.limitDown;
+                    if (tradePrice > stock.limitUp) tradePrice = stock.limitUp;
+                    if (tradePrice < stock.limitDown) tradePrice = stock.limitDown;
 
                     double tradeQuantity = Math.min(bestBuy.quantity, bestSell.quantity);
 
@@ -283,10 +310,8 @@ public class Market implements Steppable {
                     bestBuy.quantity -= tradeQuantity;
                     bestSell.quantity -= tradeQuantity;
 
-                    if (bestBuy.quantity < 0.001)
-                        ob.buyOrders.poll();
-                    if (bestSell.quantity < 0.001)
-                        ob.sellOrders.poll();
+                    if (bestBuy.quantity < 0.001) ob.buyOrders.poll();
+                    if (bestSell.quantity < 0.001) ob.sellOrders.poll();
 
                     // Log trade record
                     SimulationDataLogger logger = model.dbLogger;
@@ -297,7 +322,7 @@ public class Market implements Steppable {
                         }
                         logger.logTrade(getCurrentDay(), stockIdx,
                                 bestBuy.trader.traderId, bestSell.trader.traderId,
-                                tradePrice, tradeQuantity);
+                                tradePrice, tradeQuantity, bestBuy.trader.getLastInfluenceJson());
                     }
 
                 } else {
@@ -328,6 +353,9 @@ public class Market implements Steppable {
             this.marketTurnoverRate = this.totalTurnoverThisDay / this.marketTotalMarketCap;
         }
 
+        // 检查熔断
+        checkCircuitBreaker();
+
         if (currentStep % STEPS_PER_DAY == STEPS_PER_DAY - 1) {
             // 记录指数历史
             this.marketIndexHistory.add(this.marketIndex);
@@ -343,7 +371,8 @@ public class Market implements Steppable {
                 this.priceHistories.get(s).add(s.currentPrice);
                 s.update52WeekHistory(s.currentPrice);
             }
-            
+
+            // 每日结算 T+N
             for (int i = 0; i < model.traders.size(); i++) {
                 Object obj = model.traders.get(i);
                 if (obj instanceof BaseTrader) {
@@ -367,18 +396,66 @@ public class Market implements Steppable {
         return sum / actualLookback;
     }
 
-    // 【新增 V4.33】 获取近期市场回报率
+    /**
+     * 获取股票价格回报率 R_t^τ = (P_t - P_{t-τ}) / P_{t-τ}
+     * 用于趋势估值 V_trend
+     */
+    public double getPriceReturn(Stock stock, int lookbackDays) {
+        ArrayList<Double> history = priceHistories.get(stock);
+        if (history == null || history.size() < 2) return 0.0;
+
+        int currentIdx = history.size() - 1;
+        int pastIdx = Math.max(0, currentIdx - lookbackDays);
+
+        double currentPrice = history.get(currentIdx);
+        double pastPrice = history.get(pastIdx);
+
+        if (pastPrice <= 0) return 0.0;
+        return (currentPrice - pastPrice) / pastPrice;
+    }
+
+    /**
+     * 获取近期市场回报率
+     */
     public double getRecentReturn(int lookbackDays) {
-        if (marketIndexHistory.isEmpty())
-            return 0.0;
+        if (marketIndexHistory.isEmpty()) return 0.0;
         int currentIdx = marketIndexHistory.size() - 1;
         int pastIdx = Math.max(0, currentIdx - lookbackDays);
 
         double currentVal = marketIndexHistory.get(currentIdx);
         double pastVal = marketIndexHistory.get(pastIdx);
 
-        if (pastVal <= 0)
-            return 0.0;
+        if (pastVal <= 0) return 0.0;
         return (currentVal - pastVal) / pastVal;
+    }
+
+    /**
+     * 获取市场波动率 σ (近期指数标准差)
+     */
+    public double getMarketVolatility(int lookbackDays) {
+        if (marketIndexHistory.size() < 2) return 0.0;
+
+        int start = Math.max(0, marketIndexHistory.size() - lookbackDays);
+        List<Double> window = marketIndexHistory.subList(start, marketIndexHistory.size());
+
+        // 计算日收益率的标准差
+        double[] returns = new double[window.size() - 1];
+        for (int i = 1; i < window.size(); i++) {
+            if (window.get(i - 1) > 0) {
+                returns[i - 1] = (window.get(i) - window.get(i - 1)) / window.get(i - 1);
+            }
+        }
+
+        if (returns.length == 0) return 0.0;
+
+        double mean = 0;
+        for (double r : returns) mean += r;
+        mean /= returns.length;
+
+        double variance = 0;
+        for (double r : returns) variance += (r - mean) * (r - mean);
+        variance /= returns.length;
+
+        return Math.sqrt(variance);
     }
 }

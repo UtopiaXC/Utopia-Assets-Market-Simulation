@@ -12,6 +12,7 @@ const api = axios.create({
 // Request interceptor
 api.interceptors.request.use(
     config => {
+        config.cancelToken = cancelTokenSource.token
         return config
     },
     error => {
@@ -25,15 +26,26 @@ api.interceptors.response.use(
         return response.data
     },
     error => {
+        if (axios.isCancel(error)) {
+            console.log('Request canceled', error.message)
+            return Promise.reject(error)
+        }
         console.error('API Error:', error)
         return Promise.reject(error)
     }
 )
 
+let cancelTokenSource = axios.CancelToken.source()
+
+export const cancelAllRequests = () => {
+    cancelTokenSource.cancel('Operation canceled by the user due to tab/route change.')
+    cancelTokenSource = axios.CancelToken.source()
+}
+
 // Simulation API
 export const simulationApi = {
-    listSimulations: () => api.get('/simulations'),
-    getSimulationInfo: (fileName: string) => api.get(`/simulations/${fileName}/info`),
+    listSimulations: (signal?: AbortSignal) => api.get('/simulations', { signal }),
+    getSimulationInfo: (fileName: string, signal?: AbortSignal) => api.get(`/simulations/${fileName}/info`, { signal }),
     renameSimulation: (oldName: string, newName: string) =>
         api.post(`/simulations/${encodeURIComponent(oldName)}/rename`, { newName }),
     deleteSimulation: (name: string) =>
@@ -42,69 +54,76 @@ export const simulationApi = {
 
 // Market API
 export const marketApi = {
-    getOverview: (dbFile: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/market`, { params: { day } }),
-    getKlineData: (dbFile: string) =>
-        api.get(`/simulations/${dbFile}/market/kline`),
-    getTotalDays: (dbFile: string) =>
-        api.get(`/simulations/${dbFile}/market/days`),
-    getTopStocks: (dbFile: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/market/top-stocks`, { params: { day } })
+    getOverview: (dbFile: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/market`, { params: { day }, signal }),
+    getKlineData: (dbFile: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/market/kline`, { signal }),
+    getTotalDays: (dbFile: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/market/days`, { signal }),
+    getTopStocks: (dbFile: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/market/top-stocks`, { params: { day }, signal })
 }
 
 // Stock API
 export const stockApi = {
-    getList: (dbFile: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/stocks`, { params: { day } }),
-    getDetail: (dbFile: string, stockId: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/stocks/${stockId}`, { params: { day } }),
-    getHistory: (dbFile: string, stockId: string) =>
-        api.get(`/simulations/${dbFile}/stocks/${stockId}/history`),
-    getShareholders: (dbFile: string, stockId: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/stocks/${stockId}/shareholders`, { params: { day } }),
-    getTrades: (dbFile: string, stockId: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/stocks/${stockId}/trades`, { params: { day } })
+    getList: (dbFile: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/stocks`, { params: { day }, signal }),
+    getDetail: (dbFile: string, stockId: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/stocks/${stockId}`, { params: { day }, signal }),
+    getHistory: (dbFile: string, stockId: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/stocks/${stockId}/history`, { signal }),
+    getShareholders: (dbFile: string, stockId: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/stocks/${stockId}/shareholders`, { params: { day }, signal }),
+    getTrades: (dbFile: string, stockId: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/stocks/${stockId}/trades`, { params: { day }, signal })
 }
 
 // Trader API
 export const traderApi = {
-    getList: (dbFile: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/traders`, { params: { day } }),
-    getDetail: (dbFile: string, traderId: number, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/traders/${traderId}`, { params: { day } }),
-    getHistory: (dbFile: string, traderId: number) =>
-        api.get(`/simulations/${dbFile}/traders/${traderId}/history`),
-    getHoldings: (dbFile: string, traderId: number, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/traders/${traderId}/holdings`, { params: { day } }),
-    getTrades: (dbFile: string, traderId: number, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/traders/${traderId}/trades`, { params: { day } })
+    getList: (dbFile: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/traders`, { params: { day }, signal }),
+    getDetail: (dbFile: string, traderId: number, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/traders/${traderId}`, { params: { day }, signal }),
+    getHistory: (dbFile: string, traderId: number, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/traders/${traderId}/history`, { signal }),
+    getHoldings: (dbFile: string, traderId: number, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/traders/${traderId}/holdings`, { params: { day }, signal }),
+    getTrades: (dbFile: string, traderId: number, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/traders/${traderId}/trades`, { params: { day }, signal }),
+    getAllTrades: (dbFile: string, traderId: number, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/traders/${traderId}/trades/all`, { signal })
 }
 
 // Macro API
 export const macroApi = {
-    getStats: (dbFile: string) =>
-        api.get(`/simulations/${dbFile}/macro`),
-    getPopulation: (dbFile: string) =>
-        api.get(`/simulations/${dbFile}/macro/population`),
-    getWealth: (dbFile: string) =>
-        api.get(`/simulations/${dbFile}/macro/wealth`)
+    getStats: (dbFile: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/macro`, { signal }),
+    getPopulation: (dbFile: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/macro/population`, { signal }),
+    getWealth: (dbFile: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/macro/wealth`, { signal })
 }
 
 // Sector API
 export const sectorApi = {
-    getStats: (dbFile: string) =>
-        api.get(`/simulations/${dbFile}/sectors`),
-    getSectorList: (dbFile: string) =>
-        api.get(`/simulations/${dbFile}/sectors/list`),
-    getSectorStocks: (dbFile: string, sector: string, day: number = 1) =>
-        api.get(`/simulations/${dbFile}/sectors/${sector}/stocks`, { params: { day } })
+    getStats: (dbFile: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/sectors`, { signal }),
+    getSectorList: (dbFile: string, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/sectors/list`, { signal }),
+    getSectorStocks: (dbFile: string, sector: string, day: number = 1, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/sectors/${sector}/stocks`, { params: { day }, signal })
+}
+
+// Scenario API
+export const scenarioApi = {
+    list: (signal?: AbortSignal) => api.get('/scenarios', { signal })
 }
 
 // Simulation Control API
 export const controlApi = {
     // Status
-    getStatus: () => api.get('/control/status'),
-    getMetrics: () => api.get('/control/metrics'),
+    getStatus: (signal?: AbortSignal) => api.get('/control/status', { signal }),
+    getMetrics: (signal?: AbortSignal) => api.get('/control/metrics', { signal }),
 
     // Lifecycle
     start: (config?: any) => api.post('/control/start', config || {}),
@@ -116,28 +135,15 @@ export const controlApi = {
     setSpeed: (multiplier: number) => api.post('/control/speed', null, { params: { multiplier } }),
 
     // Config
-    getDefaultConfig: () => api.get('/control/config/default'),
-    getSectors: () => api.get('/control/sectors'),
+    getDefaultConfig: (signal?: AbortSignal) => api.get('/control/config/default', { signal }),
+    getSectors: (signal?: AbortSignal) => api.get('/control/sectors', { signal }),
 
-    // Events
-    getPendingEvents: () => api.get('/control/events/pending'),
-    getEventHistory: () => api.get('/control/events/history'),
-    cancelEvent: (eventId: string) => api.delete(`/control/events/${eventId}`),
+    // Policy Slot
+    getCurrentPolicy: (signal?: AbortSignal) => api.get('/control/policy', { signal }),
 
-    // Event Injection
-    injectRateCut: (targetDay: number, liquidityPerAgent: number, riskBoost: number) =>
-        api.post('/control/events/rate-cut', { targetDay, liquidityPerAgent, riskBoost }),
-    injectRateHike: (targetDay: number, liquidityRatio: number, riskDrop: number) =>
-        api.post('/control/events/rate-hike', { targetDay, liquidityRatio, riskDrop }),
-    injectSectorSentiment: (targetDay: number, sector: string, multiplier: number) =>
-        api.post('/control/events/sector-sentiment', { targetDay, sector, multiplier }),
-    injectSectorFundamental: (targetDay: number, sector: string, epsChange: number) =>
-        api.post('/control/events/sector-fundamental', { targetDay, sector, epsChange }),
-
-    // LLM Context (placeholder)
-    getLlmContext: () => api.get('/control/llm/context'),
-    getAgentState: (agentId: number) => api.get(`/control/llm/agent/${agentId}`)
+    // Policy Event Injection
+    injectPolicyEvent: (day: number, policyType: string, value: number, description?: string) =>
+        api.post('/control/policy/inject', { day, policyType, value, description })
 }
 
 export default api
-

@@ -21,6 +21,7 @@ import {
 } from 'echarts/components'
 import { useSimulationStore } from '@/stores/simulation'
 import { marketApi, macroApi } from '@/services/api'
+import { useCancellableFetch } from '@/composables/useCancellableFetch'
 
 // Register ECharts components
 use([
@@ -36,7 +37,7 @@ const store = useSimulationStore()
 
 // Selected simulations
 const selectedSimulations = ref<string[]>([])
-const loading = ref(false)
+const { loading, fetch: fetchComparison } = useCancellableFetch<any>()
 const comparisonData = ref<any>({})
 
 // Simulation options
@@ -280,28 +281,24 @@ const finalStatsOption = computed(() => {
 async function loadComparison() {
   if (selectedSimulations.value.length === 0) return
   
-  loading.value = true
-  comparisonData.value = {}
-  
-  try {
+  await fetchComparison(async (signal) => {
+    const newData: any = {}
     for (const sim of selectedSimulations.value) {
       const [klineData, populationData, wealthData] = await Promise.all([
-        marketApi.getKlineData(sim),
-        macroApi.getPopulation(sim),
-        macroApi.getWealth(sim)
+        marketApi.getKlineData(sim, signal),
+        macroApi.getPopulation(sim, signal),
+        macroApi.getWealth(sim, signal)
       ])
       
-      comparisonData.value[sim] = { 
+      newData[sim] = { 
         klineData, 
         populationHistory: populationData,
         wealthHistory: wealthData
       }
     }
-  } catch (error) {
-    console.error('Failed to load comparison data:', error)
-  } finally {
-    loading.value = false
-  }
+    comparisonData.value = newData
+    return newData
+  })
 }
 </script>
 

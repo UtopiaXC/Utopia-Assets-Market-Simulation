@@ -17,6 +17,7 @@ import {
 } from 'echarts/components'
 import { useSimulationStore } from '@/stores/simulation'
 import { macroApi } from '@/services/api'
+import { useCancellableFetch } from '@/composables/useCancellableFetch'
 
 // Register ECharts components
 use([
@@ -30,8 +31,7 @@ use([
 const store = useSimulationStore()
 
 // Data
-const loading = ref(false)
-const macroData = ref<any>(null)
+const { loading, data: macroData, fetch: fetchMacro } = useCancellableFetch<any>()
 
 // Population chart
 const populationOption = computed(() => {
@@ -166,16 +166,7 @@ const agentRiskOption = computed(() => {
 
 async function fetchData() {
   if (!store.currentSimulation) return
-  
-  loading.value = true
-  try {
-    const data = await macroApi.getStats(store.currentSimulation)
-    macroData.value = data
-  } catch (error) {
-    console.error('Failed to fetch macro data:', error)
-  } finally {
-    loading.value = false
-  }
+  await fetchMacro((signal) => macroApi.getStats(store.currentSimulation!, signal))
 }
 
 // Watch for changes

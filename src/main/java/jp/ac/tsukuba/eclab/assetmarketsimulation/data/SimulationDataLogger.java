@@ -8,6 +8,7 @@ import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.Position;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.ValuationService;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -25,12 +26,13 @@ import java.util.*;
 
 /**
  * Simulation data logger using MyBatis DAO layer.
- * Replaces DatabaseLogger and OptimizedDatabaseLogger.
  *
  * Features:
  * - 3NF normalized schema (static info logged once, daily data separately)
  * - Trade records for all market matches
  * - Delta + periodic snapshot strategy for holdings
+ * - Social influence logging for network visualization
+ * - Leverage/margin tracking
  * - Extensible event logging with JSON parameters
  */
 public class SimulationDataLogger implements Steppable {
@@ -53,6 +55,11 @@ public class SimulationDataLogger implements Steppable {
 
     // Trade record buffer (filled by Market during matching)
     private final List<TradeRecordEntity> tradeBuffer = Collections.synchronizedList(new ArrayList<>());
+
+
+
+    // Event buffer
+    private final List<String[]> eventBuffer = Collections.synchronizedList(new ArrayList<>());
 
     private String dbPath;
 
@@ -170,9 +177,10 @@ public class SimulationDataLogger implements Steppable {
     /**
      * Called by Market when a trade is matched.
      * Buffered for batch insert at end of day.
+     * @param influenceJson optional JSON string with social influence data for this trade
      */
     public void logTrade(int day, int stockIndex, int buyerId, int sellerId,
-                         double price, double quantity) {
+                         double price, double quantity, String influenceJson) {
         TradeRecordEntity record = new TradeRecordEntity();
         record.setDay(day);
         record.setStockId(stockIndex);
@@ -180,65 +188,25 @@ public class SimulationDataLogger implements Steppable {
         record.setSellerId(sellerId);
         record.setPrice(price);
         record.setQuantity(quantity);
+        record.setInfluenceJson(influenceJson);
         tradeBuffer.add(record);
     }
 
     /**
-     * Log IPO data.
+     * Convenience overload without influence data.
      */
-    public void logIPO(String stockId, double ipoPrice, double available, double demand, double ratio) {
-        if (batchSession == null) return;
-        try {
-            // Find stock index from stockId
-            int stockIndex = -1;
-            for (int i = 0; i < stocks.size(); i++) {
-                if (((Stock) stocks.get(i)).stockId.equals(stockId)) {
-                    stockIndex = i;
-                    break;
-                }
-            }
-            if (stockIndex < 0) return;
-
-            IpoMapper mapper = batchSession.getMapper(IpoMapper.class);
-            IpoEntity entity = new IpoEntity();
-            entity.setStockId(stockIndex);
-            entity.setIpoPrice(ipoPrice);
-            entity.setAvailableShares(available);
-            entity.setDemandShares(demand);
-            entity.setOversubscriptionRatio(ratio);
-            mapper.insertIpo(entity);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    public void logTrade(int day, int stockIndex, int buyerId, int sellerId,
+                         double price, double quantity) {
+        logTrade(day, stockIndex, buyerId, sellerId, price, quantity, null);
     }
 
-    public void logIPOSubscription(String stockId, int traderId, double demandShares, double allocatedShares) {
-        if (batchSession == null) return;
-        try {
-            int stockIndex = -1;
-            for (int i = 0; i < stocks.size(); i++) {
-                if (((Stock) stocks.get(i)).stockId.equals(stockId)) {
-                    stockIndex = i;
-                    break;
-                }
-            }
-            if (stockIndex < 0) return;
 
-            IpoMapper mapper = batchSession.getMapper(IpoMapper.class);
-            IpoSubscriptionEntity entity = new IpoSubscriptionEntity();
-            entity.setStockId(stockIndex);
-            entity.setAgentId(traderId);
-            entity.setDemandShares(demandShares);
-            entity.setAllocatedShares(allocatedShares);
-            mapper.insertSubscription(entity);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
 
-    public void commitIPO() {
-        if (batchSession == null) return;
-        batchSession.commit();
+    /**
+     * Log an event (circuit breaker, margin call, etc.)
+     */
+    public void logEvent(String eventType, int day, String description) {
+        eventBuffer.add(new String[]{eventType, String.valueOf(day), description});
     }
 
     /**
@@ -288,13 +256,18 @@ public class SimulationDataLogger implements Steppable {
         // 2. Stock daily
         logStockDaily(day);
 
-        // 3. Agent asset daily
+        // 3. Agent asset daily (with leverage data)
         logAgentAssetDaily(day);
 
         // 4. Flush trade buffer
         flushTradeBuffer();
 
-        // 5. Holdings (delta + periodic snapshot)
+
+
+        // 6. Flush event buffer
+        flushEventBuffer();
+
+        // 7. Holdings (delta + periodic snapshot)
         boolean isSnapshotDay = (day % HOLDINGS_SNAPSHOT_INTERVAL == 0);
         if (isSnapshotDay) {
             logHoldingsSnapshot(day);
@@ -395,6 +368,27 @@ public class SimulationDataLogger implements Steppable {
         }
         for (TradeRecordEntity record : records) {
             mapper.insert(record);
+        }
+    }
+
+
+
+    private void flushEventBuffer() {
+        if (eventBuffer.isEmpty()) return;
+        EventLogMapper mapper = batchSession.getMapper(EventLogMapper.class);
+        List<String[]> events;
+        synchronized (eventBuffer) {
+            events = new ArrayList<>(eventBuffer);
+            eventBuffer.clear();
+        }
+        for (String[] event : events) {
+            EventLogEntity entity = new EventLogEntity();
+            entity.setEventId(UUID.randomUUID().toString().substring(0, 8));
+            entity.setEventType(event[0]);
+            entity.setDay(Integer.parseInt(event[1]));
+            entity.setDescription(event[2]);
+            entity.setSource("SYSTEM");
+            mapper.insert(entity);
         }
     }
 
