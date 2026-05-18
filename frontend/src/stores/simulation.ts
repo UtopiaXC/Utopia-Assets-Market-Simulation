@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import axios from 'axios'
 import { simulationApi, marketApi } from '@/services/api'
 
 export interface SimulationFile {
@@ -32,8 +33,11 @@ export const useSimulationStore = defineStore('simulation', () => {
         error.value = null
         try {
             const data = await simulationApi.listSimulations()
-            simulations.value = data as SimulationFile[]
+            simulations.value = data as unknown as SimulationFile[]
         } catch (e: any) {
+            if (axios.isCancel(e)) {
+                return
+            }
             error.value = e.message || 'Failed to fetch simulations'
             console.error('Failed to fetch simulations:', e)
         } finally {
@@ -48,10 +52,13 @@ export const useSimulationStore = defineStore('simulation', () => {
             currentSimulation.value = fileName
 
             // Get total days
-            const daysData = await marketApi.getTotalDays(fileName) as { totalDays: number }
+            const daysData = await marketApi.getTotalDays(fileName) as unknown as { totalDays: number }
             totalDays.value = daysData.totalDays || 100
             currentDay.value = 1
         } catch (e: any) {
+            if (axios.isCancel(e)) {
+                return
+            }
             error.value = e.message || 'Failed to connect to simulation'
             currentSimulation.value = null
             console.error('Failed to select simulation:', e)

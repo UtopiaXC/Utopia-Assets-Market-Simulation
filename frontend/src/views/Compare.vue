@@ -291,9 +291,9 @@ async function loadComparison() {
       ])
       
       newData[sim] = { 
-        klineData, 
-        populationHistory: populationData,
-        wealthHistory: wealthData
+        klineData: klineData.klineData || [],
+        populationHistory: populationData.population || [],
+        wealthHistory: wealthData.wealth || []
       }
     }
     comparisonData.value = newData
@@ -341,49 +341,49 @@ async function loadComparison() {
         <NGrid :cols="2" :x-gap="16" :y-gap="16">
           <!-- Market Index -->
           <NGridItem>
-            <NCard>
+            <NCard title="Market Index">
               <VChart :option="indexCompareOption" style="height: 300px" autoresize />
             </NCard>
           </NGridItem>
           
           <!-- Active Agents -->
           <NGridItem>
-            <NCard>
+            <NCard title="Active Agents">
               <VChart :option="populationCompareOption" style="height: 300px" autoresize />
             </NCard>
           </NGridItem>
           
           <!-- Total Market Cap -->
           <NGridItem>
-            <NCard>
+            <NCard title="Total Market Cap">
               <VChart :option="marketCapCompareOption" style="height: 300px" autoresize />
             </NCard>
           </NGridItem>
           
           <!-- Trading Volume -->
           <NGridItem>
-            <NCard>
+            <NCard title="Trading Volume">
               <VChart :option="volumeCompareOption" style="height: 300px" autoresize />
             </NCard>
           </NGridItem>
           
           <!-- Turnover Rate -->
           <NGridItem>
-            <NCard>
+            <NCard title="Turnover Rate">
               <VChart :option="turnoverCompareOption" style="height: 300px" autoresize />
             </NCard>
           </NGridItem>
           
           <!-- Social Wealth -->
           <NGridItem>
-            <NCard>
+            <NCard title="Social Wealth">
               <VChart :option="wealthCompareOption" style="height: 300px" autoresize />
             </NCard>
           </NGridItem>
           
           <!-- Final Statistics Bar Chart (full width) -->
           <NGridItem :span="2">
-            <NCard>
+            <NCard title="Final Statistics">
               <VChart :option="finalStatsOption" style="height: 350px" autoresize />
             </NCard>
           </NGridItem>

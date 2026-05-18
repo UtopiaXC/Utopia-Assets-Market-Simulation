@@ -26,8 +26,7 @@ api.interceptors.response.use(
         return response.data
     },
     error => {
-        if (axios.isCancel(error)) {
-            console.log('Request canceled', error.message)
+        if (axios.isCancel(error)) {// Suppress the console log for silent cancellation on tab changes
             return Promise.reject(error)
         }
         console.error('API Error:', error)
