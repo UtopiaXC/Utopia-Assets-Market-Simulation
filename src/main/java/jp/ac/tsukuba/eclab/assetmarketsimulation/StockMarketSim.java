@@ -1,5 +1,6 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation;
 
+import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.data.SimulationDataLogger;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
@@ -59,6 +60,8 @@ public class StockMarketSim extends SimState {
     private double fomoSensitivity = Config.ECONOMY_FOMO_SENSITIVITY;
     private double baseEntryProb = Config.ECONOMY_BASE_ENTRY_PROB;
 
+    private SimulationConfig simulationConfig;
+
     public StockMarketSim(long seed) {
         super(seed);
     }
@@ -67,6 +70,7 @@ public class StockMarketSim extends SimState {
     public void setStepsPerDay(int steps) { this.stepsPerDay = steps; }
     public void setSocialTopK(int topK) { this.socialTopK = topK; }
     public void setScenario(MarketScenario scenario) { this.scenario = scenario; }
+    public void setSimulationConfig(SimulationConfig config) { this.simulationConfig = config; }
 
     @Override
     public void start() {
@@ -99,6 +103,12 @@ public class StockMarketSim extends SimState {
 
         // 7. Initialize logger
         dbLogger = new SimulationDataLogger(this.seed(), simulationName);
+        if (simulationConfig != null) {
+            dbLogger.setLogTrades(simulationConfig.isLogTrades());
+            dbLogger.setLogHoldingsDelta(simulationConfig.isLogHoldingsDelta());
+            dbLogger.setLogAgentDaily(simulationConfig.isLogAgentDaily());
+            dbLogger.setHoldingsSnapshotInterval(simulationConfig.getHoldingsSnapshotInterval());
+        }
         dbLogger.setup(this);
 
         // 8. Schedule core components

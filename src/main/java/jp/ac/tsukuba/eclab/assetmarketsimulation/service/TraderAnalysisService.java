@@ -94,6 +94,27 @@ public class TraderAnalysisService {
         return result;
     }
 
+    public List<TraderDayData> getTraderHistoryOnly(String dbFile, int traderId) {
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            AgentAssetDailyMapper assetMapper = session.getMapper(AgentAssetDailyMapper.class);
+            List<AgentAssetDailyEntity> history = assetMapper.selectByAgentId(traderId);
+            List<TraderDayData> list = new ArrayList<>(history.size());
+            for (AgentAssetDailyEntity e : history) {
+                TraderDayData data = new TraderDayData();
+                data.day = e.getDay();
+                data.totalAssets = e.getTotalAssets() != null ? e.getTotalAssets() : 0;
+                data.privateSavings = e.getPrivateSavings() != null ? e.getPrivateSavings() : 0;
+                data.cash = e.getCash() != null ? e.getCash() : 0;
+                data.reservedCash = e.getReservedCash() != null ? e.getReservedCash() : 0;
+                data.stockValue = e.getStockValue() != null ? e.getStockValue() : 0;
+                data.riskTolerance = e.getRiskTolerance() != null ? e.getRiskTolerance() : 0;
+                data.isActive = e.getIsActive() != null ? e.getIsActive() : false;
+                list.add(data);
+            }
+            return list;
+        }
+    }
+
     private TraderMetrics getCurrentMetrics(int traderId, int day, List<TraderDayData> history) {
         TraderDayData current = null;
         TraderDayData previous = null;

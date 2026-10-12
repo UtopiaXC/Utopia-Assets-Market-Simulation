@@ -57,8 +57,7 @@ public class TraderController {
             @PathVariable String dbFile,
             @PathVariable int traderId) {
         try {
-            TraderDetailDTO detail = traderAnalysisService.getTraderDetail(dbFile, traderId, 1);
-            return ResponseEntity.ok(Map.of("history", detail.history));
+            return ResponseEntity.ok(Map.of("history", traderAnalysisService.getTraderHistoryOnly(dbFile, traderId)));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }

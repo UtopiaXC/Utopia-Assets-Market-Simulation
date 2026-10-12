@@ -33,8 +33,7 @@ public class MarketController {
     @GetMapping("/kline")
     public ResponseEntity<?> getKlineData(@PathVariable String dbFile) {
         try {
-            MarketOverviewDTO data = marketAnalysisService.getMarketOverview(dbFile, 1);
-            return ResponseEntity.ok(Map.of("klineData", data.klineData));
+            return ResponseEntity.ok(Map.of("klineData", marketAnalysisService.getKlineData(dbFile)));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }

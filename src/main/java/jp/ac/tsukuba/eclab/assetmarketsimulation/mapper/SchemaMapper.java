@@ -56,8 +56,35 @@ public interface SchemaMapper {
             "amplitude REAL, turnover_rate REAL, " +
             "social_wealth_pool REAL, " +
             "active_agents INT, " +
+            "total_private_savings REAL DEFAULT 0, " +
+            "total_agent_assets REAL DEFAULT 0, " +
             "circuit_breaker_triggered BOOLEAN DEFAULT 0)")
     void createMarketDailyTable();
+
+    @Update("CREATE TABLE IF NOT EXISTS sector_daily (" +
+            "day INTEGER NOT NULL, " +
+            "sector_id INTEGER NOT NULL, " +
+            "sector_name TEXT NOT NULL, " +
+            "total_market_cap REAL, " +
+            "avg_pe REAL, " +
+            "total_volume REAL, " +
+            "total_turnover REAL, " +
+            "stock_count INT, " +
+            "PRIMARY KEY (day, sector_id))")
+    void createSectorDailyTable();
+
+    @Update("CREATE TABLE IF NOT EXISTS agent_type_daily (" +
+            "day INTEGER NOT NULL, " +
+            "agent_type TEXT NOT NULL, " +
+            "total_assets REAL, " +
+            "avg_risk_tolerance REAL, " +
+            "active_count INT, " +
+            "total_count INT, " +
+            "cash REAL, " +
+            "stock_value REAL, " +
+            "private_savings REAL, " +
+            "PRIMARY KEY (day, agent_type))")
+    void createAgentTypeDailyTable();
 
     @Update("CREATE TABLE IF NOT EXISTS stock_daily (" +
             "day INTEGER NOT NULL, " +
@@ -164,6 +191,33 @@ public interface SchemaMapper {
 
     @Update("CREATE INDEX IF NOT EXISTS idx_event_log_day ON event_log(day)")
     void createIndexEventLogDay();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_sector_daily_day ON sector_daily(day)")
+    void createIndexSectorDailyDay();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_sector_daily_name ON sector_daily(sector_name, day)")
+    void createIndexSectorDailyName();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_agent_type_daily_day ON agent_type_daily(day)")
+    void createIndexAgentTypeDailyDay();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_agent_type_daily_type ON agent_type_daily(agent_type, day)")
+    void createIndexAgentTypeDailyType();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_holdings_snapshot_agent_day ON holdings_snapshot(agent_id, snapshot_day DESC)")
+    void createIndexHoldingsSnapshotAgentDay();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_holdings_delta_agent_day ON holdings_delta(agent_id, day)")
+    void createIndexHoldingsDeltaAgentDay();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_stock_sector_id ON stock(sector_id)")
+    void createIndexStockSectorId();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_agent_agent_type ON agent(agent_type)")
+    void createIndexAgentAgentType();
+
+    @Update("CREATE INDEX IF NOT EXISTS idx_stock_daily_day_stock ON stock_daily(day, stock_id)")
+    void createIndexStockDailyDayStock();
 
     // NOTE: SQLite PRAGMAs are executed via raw JDBC in DynamicSqlSessionManager
     // because PRAGMA journal_mode returns a result set, incompatible with @Update.

@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -107,6 +108,46 @@ public class StockAnalysisService {
         return result;
     }
 
+    public List<StockDayData> getStockHistoryOnly(String dbFile, String stockId) {
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            int stockIndex = resolveStockIndex(session, stockId);
+            if (stockIndex < 0) return new ArrayList<>();
+
+            StockMapper stockMapper = session.getMapper(StockMapper.class);
+            StockDailyMapper dailyMapper = session.getMapper(StockDailyMapper.class);
+            StockEntity stockEntity = stockMapper.selectById(stockIndex);
+            List<StockDailyEntity> history = dailyMapper.selectByStockId(stockIndex);
+
+            List<StockDayData> list = new ArrayList<>(history.size());
+            for (StockDailyEntity e : history) {
+                StockDayData data = new StockDayData();
+                data.day = e.getDay();
+                data.open = e.getOpen();
+                data.high = e.getHigh();
+                data.low = e.getLow();
+                data.close = e.getClose();
+                data.volume = e.getVolume();
+                data.turnover = e.getTurnover();
+                data.pbRatio = e.getPbRatio();
+                data.peTtm = e.getPeTtm();
+                data.peStatic = e.getPeStatic() != null ? e.getPeStatic() : 0;
+                data.peDynamic = e.getPeDynamic() != null ? e.getPeDynamic() : 0;
+                data.eps = e.getEps();
+                data.netAssets = e.getNetAssets();
+                data.totalMarketCap = e.getTotalMarketCap();
+                data.liquidMarketCap = e.getLiquidMarketCap();
+                data.turnoverRate = e.getTurnoverRate();
+                data.amplitude = e.getAmplitude();
+                data.totalShares = stockEntity != null ? stockEntity.getTotalShares() : 0;
+                data.liquidShares = stockEntity != null ? stockEntity.getLiquidShares() : 0;
+                data.high52w = e.getHigh52w();
+                data.low52w = e.getLow52w();
+                list.add(data);
+            }
+            return list;
+        }
+    }
+
     private int resolveStockIndex(SqlSession session, String stockId) {
         // Try as numeric index first
         try {
@@ -129,6 +170,13 @@ public class StockAnalysisService {
             List<HoldingsSnapshotEntity> snapshots = holdingsMapper.selectSnapshotsByDay(
                     day - (day % 50 == 0 ? 0 : day % 50) // Find closest snapshot day
             );
+            if (snapshots == null || snapshots.isEmpty()) return shareholders;
+
+            // Pre-load all agents to avoid N+1 queries in the loop
+            Map<Integer, String> agentTypeMap = new HashMap<>();
+            for (var agent : agentMapper.selectAll()) {
+                agentTypeMap.put(agent.getId(), agent.getAgentType());
+            }
 
             String stockKey = String.valueOf(stockIndex);
             for (HoldingsSnapshotEntity snap : snapshots) {
@@ -136,10 +184,10 @@ public class StockAnalysisService {
                         snap.getHoldingsJson(), new TypeReference<Map<String, Double>>() {});
                 Double quantity = holdings.get(stockKey);
                 if (quantity != null && quantity > 0) {
-                    var agent = agentMapper.selectById(snap.getAgentId());
+                    String agentType = agentTypeMap.getOrDefault(snap.getAgentId(), "Unknown");
                     shareholders.add(new Shareholder(
                             snap.getAgentId(),
-                            agent != null ? agent.getAgentType() : "Unknown",
+                            agentType,
                             quantity, 0)); // value requires current price, set to 0 for now
                 }
             }

@@ -9,9 +9,9 @@ import java.util.List;
 public interface MarketDailyMapper {
 
     @Insert("INSERT OR REPLACE INTO market_daily (day, open, high, low, close, volume, turnover, " +
-            "total_market_cap, amplitude, turnover_rate, social_wealth_pool, active_agents) " +
+            "total_market_cap, amplitude, turnover_rate, social_wealth_pool, active_agents, total_private_savings, total_agent_assets) " +
             "VALUES (#{day}, #{open}, #{high}, #{low}, #{close}, #{volume}, #{turnover}, " +
-            "#{totalMarketCap}, #{amplitude}, #{turnoverRate}, #{socialWealthPool}, #{activeAgents})")
+            "#{totalMarketCap}, #{amplitude}, #{turnoverRate}, #{socialWealthPool}, #{activeAgents}, #{totalPrivateSavings}, #{totalAgentAssets})")
     void insert(MarketDailyEntity entity);
 
     @Select("SELECT * FROM market_daily ORDER BY day")

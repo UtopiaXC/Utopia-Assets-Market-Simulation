@@ -40,10 +40,11 @@ public class SimulationConfig {
     private String scenarioName = "EmptyScenario";
 
     // ============ Logging Settings ============
-    // ============ Logging Settings ============
     private int logSampleInterval = 1; // Log every N days (1 = every day)
     private boolean logHoldingsDelta = true; // Only log holding changes
     private int holdingsSnapshotInterval = 10; // Full snapshot every N days
+    private boolean logTrades = true; // Log granular trade records (false for GA/batch mode)
+    private boolean logAgentDaily = true; // Log daily agent assets (false for GA/batch mode)
 
     // ============ Execution Parameters ============
     private String simulationName = null; // Custom name for the simulation result
@@ -233,5 +234,21 @@ public class SimulationConfig {
 
     public void setSettlementDays(int settlementDays) {
         this.settlementDays = settlementDays;
+    }
+
+    public boolean isLogTrades() {
+        return logTrades;
+    }
+
+    public void setLogTrades(boolean logTrades) {
+        this.logTrades = logTrades;
+    }
+
+    public boolean isLogAgentDaily() {
+        return logAgentDaily;
+    }
+
+    public void setLogAgentDaily(boolean logAgentDaily) {
+        this.logAgentDaily = logAgentDaily;
     }
 }

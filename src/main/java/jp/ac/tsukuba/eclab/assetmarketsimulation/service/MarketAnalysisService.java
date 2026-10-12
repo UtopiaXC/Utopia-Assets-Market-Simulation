@@ -22,13 +22,45 @@ public class MarketAnalysisService {
     @Autowired
     private DatabaseService databaseService;
 
+    // Cache for completed simulations
+    private final java.util.Map<String, CachedKline> klineCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static class CachedKline {
+        final long lastModified;
+        final List<MarketDayData> data;
+        CachedKline(long lastModified, List<MarketDayData> data) {
+            this.lastModified = lastModified;
+            this.data = data;
+        }
+    }
+
+    public List<MarketDayData> getKlineData(String dbFile) {
+        java.io.File file = new java.io.File(dbFile);
+        if (!file.exists()) file = new java.io.File("output", dbFile);
+        long currentMod = file.exists() ? file.lastModified() : 0;
+
+        CachedKline cached = klineCache.get(file.getAbsolutePath());
+        if (cached != null && cached.lastModified == currentMod && currentMod > 0) {
+            return cached.data;
+        }
+
+        try (SqlSession session = databaseService.openSession(dbFile)) {
+            MarketDailyMapper marketMapper = session.getMapper(MarketDailyMapper.class);
+            List<MarketDayData> kline = toKlineData(marketMapper.selectAll());
+            if (currentMod > 0) {
+                klineCache.put(file.getAbsolutePath(), new CachedKline(currentMod, kline));
+            }
+            return kline;
+        }
+    }
+
     public MarketOverviewDTO getMarketOverview(String dbFile, int day) {
         MarketOverviewDTO result = new MarketOverviewDTO();
         try (SqlSession session = databaseService.openSession(dbFile)) {
             MarketDailyMapper marketMapper = session.getMapper(MarketDailyMapper.class);
             StockDailyMapper stockMapper = session.getMapper(StockDailyMapper.class);
 
-            result.klineData = toKlineData(marketMapper.selectAll());
+            result.klineData = getKlineData(dbFile);
             MarketDailyEntity dayEntity = marketMapper.selectByDay(day);
             result.dayDetail = toDayDetail(dayEntity);
             result.topActiveStocks = toTopStocks(stockMapper.selectTopByTurnover(day, 10));

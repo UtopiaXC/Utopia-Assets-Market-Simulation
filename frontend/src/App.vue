@@ -262,9 +262,6 @@ onMounted(async () => {
                   </template>
                 </NButton>
               </NDropdown>
-              <div style="margin-top: 8px; opacity: 0.5">
-                <small>v1.0.0</small>
-              </div>
             </div>
           </NLayoutSider>
           

@@ -31,8 +31,7 @@ public class MacroController {
     @GetMapping("/population")
     public ResponseEntity<?> getPopulation(@PathVariable String dbFile) {
         try {
-            MacroStatsDTO data = macroAnalysisService.getMacroStats(dbFile);
-            return ResponseEntity.ok(Map.of("population", data.populationHistory));
+            return ResponseEntity.ok(Map.of("population", macroAnalysisService.getPopulation(dbFile)));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
@@ -41,8 +40,7 @@ public class MacroController {
     @GetMapping("/wealth")
     public ResponseEntity<?> getWealth(@PathVariable String dbFile) {
         try {
-            MacroStatsDTO data = macroAnalysisService.getMacroStats(dbFile);
-            return ResponseEntity.ok(Map.of("wealth", data.wealthHistory));
+            return ResponseEntity.ok(Map.of("wealth", macroAnalysisService.getWealth(dbFile)));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
@@ -51,8 +49,7 @@ public class MacroController {
     @GetMapping("/agent-assets")
     public ResponseEntity<?> getAgentAssets(@PathVariable String dbFile) {
         try {
-            MacroStatsDTO data = macroAnalysisService.getMacroStats(dbFile);
-            return ResponseEntity.ok(Map.of("agentAssets", data.agentTypeAssets));
+            return ResponseEntity.ok(Map.of("agentAssets", macroAnalysisService.getAgentAssets(dbFile)));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
@@ -61,8 +58,7 @@ public class MacroController {
     @GetMapping("/agent-risk")
     public ResponseEntity<?> getAgentRisk(@PathVariable String dbFile) {
         try {
-            MacroStatsDTO data = macroAnalysisService.getMacroStats(dbFile);
-            return ResponseEntity.ok(Map.of("agentRisk", data.agentTypeRisk));
+            return ResponseEntity.ok(Map.of("agentRisk", macroAnalysisService.getAgentRisk(dbFile)));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }

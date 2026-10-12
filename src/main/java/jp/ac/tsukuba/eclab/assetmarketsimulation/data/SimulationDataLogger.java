@@ -48,15 +48,16 @@ public class SimulationDataLogger implements Steppable {
     private StockMarketSim sim;
 
     // Configuration
-    private static final int HOLDINGS_SNAPSHOT_INTERVAL = 50; // Full snapshot every N days
+    private int holdingsSnapshotInterval = 50; // Full snapshot every N days
+    private boolean logTrades = true;          // Log granular trades
+    private boolean logHoldingsDelta = true;   // Log holdings delta
+    private boolean logAgentDaily = true;      // Log per-agent asset daily
 
     // State tracking for delta compression
     private Map<Integer, Map<String, Double>> previousHoldings = new HashMap<>();
 
     // Trade record buffer (filled by Market during matching)
     private final List<TradeRecordEntity> tradeBuffer = Collections.synchronizedList(new ArrayList<>());
-
-
 
     // Event buffer
     private final List<String[]> eventBuffer = Collections.synchronizedList(new ArrayList<>());
@@ -88,13 +89,18 @@ public class SimulationDataLogger implements Steppable {
         try {
             sessionFactory = DynamicSqlSessionManager.createNew(dbPath);
             DynamicSqlSessionManager.initializeSchema(sessionFactory);
-            batchSession = sessionFactory.openSession(false); // manual commit
+            batchSession = sessionFactory.openSession(org.apache.ibatis.session.ExecutorType.BATCH, false); // batch mode + manual commit
             System.out.println("SimulationDataLogger initialized: " + dbPath);
         } catch (Exception e) {
             System.err.println("SimulationDataLogger initialization failed: " + e.getMessage());
             e.printStackTrace();
         }
     }
+
+    public void setLogTrades(boolean logTrades) { this.logTrades = logTrades; }
+    public void setLogHoldingsDelta(boolean logHoldingsDelta) { this.logHoldingsDelta = logHoldingsDelta; }
+    public void setLogAgentDaily(boolean logAgentDaily) { this.logAgentDaily = logAgentDaily; }
+    public void setHoldingsSnapshotInterval(int interval) { this.holdingsSnapshotInterval = interval; }
 
     public void setup(StockMarketSim sim) {
         this.sim = sim;
@@ -181,6 +187,7 @@ public class SimulationDataLogger implements Steppable {
      */
     public void logTrade(int day, int stockIndex, int buyerId, int sellerId,
                          double price, double quantity, String influenceJson) {
+        if (!logTrades) return;
         TradeRecordEntity record = new TradeRecordEntity();
         record.setDay(day);
         record.setStockId(stockIndex);
@@ -250,32 +257,44 @@ public class SimulationDataLogger implements Steppable {
     }
 
     private void logDailyData(int day) {
-        // 1. Market daily
+        // 1. Market daily (macro indices + wealth aggregates)
         logMarketDaily(day);
 
-        // 2. Stock daily
+        // 2. Sector daily (pre-aggregated)
+        logSectorDaily(day);
+
+        // 3. Agent type daily (pre-aggregated)
+        logAgentTypeDaily(day);
+
+        // 4. Stock daily
         logStockDaily(day);
 
-        // 3. Agent asset daily (with leverage data)
-        logAgentAssetDaily(day);
-
-        // 4. Flush trade buffer
-        flushTradeBuffer();
-
-
-
-        // 6. Flush event buffer
-        flushEventBuffer();
-
-        // 7. Holdings (delta + periodic snapshot)
-        boolean isSnapshotDay = (day % HOLDINGS_SNAPSHOT_INTERVAL == 0);
-        if (isSnapshotDay) {
-            logHoldingsSnapshot(day);
-        } else {
-            logHoldingsDelta(day);
+        // 5. Agent asset daily (with leverage data)
+        if (logAgentDaily) {
+            logAgentAssetDaily(day);
         }
 
-        // Commit
+        // 6. Flush trade buffer
+        if (logTrades) {
+            flushTradeBuffer();
+        } else {
+            tradeBuffer.clear();
+        }
+
+        // 7. Flush event buffer
+        flushEventBuffer();
+
+        // 8. Holdings (delta + periodic snapshot)
+        if (logHoldingsDelta) {
+            boolean isSnapshotDay = (day % holdingsSnapshotInterval == 0);
+            if (isSnapshotDay) {
+                logHoldingsSnapshot(day);
+            } else {
+                logHoldingsDelta(day);
+            }
+        }
+
+        // Commit batch
         batchSession.commit();
 
         if (day % 100 == 0) {
@@ -299,13 +318,102 @@ public class SimulationDataLogger implements Steppable {
         entity.setSocialWealthPool(sim.socialWealthPool);
 
         int activeAgents = 0;
+        double totalPrivateSavings = 0;
+        double totalAgentAssets = 0;
         for (int i = 0; i < traders.size(); i++) {
-            if (traders.get(i) instanceof BaseTrader bt && bt.isActive()) {
-                activeAgents++;
+            if (traders.get(i) instanceof BaseTrader bt) {
+                if (bt.isActive()) {
+                    activeAgents++;
+                }
+                totalPrivateSavings += bt.privateSavings;
+                double stockValue = bt.portfolio.getTotalStockValue();
+                totalAgentAssets += (bt.portfolio.cash + bt.portfolio.reservedCash + stockValue + bt.privateSavings);
             }
         }
         entity.setActiveAgents(activeAgents);
+        entity.setTotalPrivateSavings(totalPrivateSavings);
+        entity.setTotalAgentAssets(totalAgentAssets);
         mapper.insert(entity);
+    }
+
+    private void logSectorDaily(int day) {
+        SectorDailyMapper mapper = batchSession.getMapper(SectorDailyMapper.class);
+        Sector[] allSectors = Sector.values();
+        double[] totalMarketCaps = new double[allSectors.length];
+        double[] peSums = new double[allSectors.length];
+        double[] volumes = new double[allSectors.length];
+        double[] turnovers = new double[allSectors.length];
+        int[] counts = new int[allSectors.length];
+
+        for (int i = 0; i < stocks.size(); i++) {
+            Stock s = (Stock) stocks.get(i);
+            int secIdx = s.sector.ordinal();
+            totalMarketCaps[secIdx] += s.totalMarketCap;
+            peSums[secIdx] += s.peRatioTTM;
+            volumes[secIdx] += s.volumeThisDay;
+            turnovers[secIdx] += s.turnoverThisDay;
+            counts[secIdx]++;
+        }
+
+        for (int i = 0; i < allSectors.length; i++) {
+            SectorDailyEntity entity = new SectorDailyEntity();
+            entity.setDay(day);
+            entity.setSectorId(i);
+            entity.setSectorName(allSectors[i].name());
+            entity.setTotalMarketCap(totalMarketCaps[i]);
+            entity.setAvgPe(counts[i] > 0 ? peSums[i] / counts[i] : 0.0);
+            entity.setTotalVolume(volumes[i]);
+            entity.setTotalTurnover(turnovers[i]);
+            entity.setStockCount(counts[i]);
+            mapper.insert(entity);
+        }
+    }
+
+    private void logAgentTypeDaily(int day) {
+        AgentTypeDailyMapper mapper = batchSession.getMapper(AgentTypeDailyMapper.class);
+        Map<String, double[]> stats = new HashMap<>(); // [totalAssets, sumRisk, cash, stockVal, savings]
+        Map<String, int[]> counts = new HashMap<>();   // [activeCount, totalCount]
+
+        for (int i = 0; i < traders.size(); i++) {
+            Object obj = traders.get(i);
+            if (!(obj instanceof BaseTrader t)) continue;
+
+            String type = t.traderType != null ? t.traderType : "UNKNOWN";
+            double[] arr = stats.computeIfAbsent(type, k -> new double[5]);
+            int[] cnt = counts.computeIfAbsent(type, k -> new int[2]);
+
+            double stockVal = t.portfolio.getTotalStockValue();
+            double totalAssets = t.portfolio.cash + t.portfolio.reservedCash + stockVal + t.privateSavings;
+
+            arr[0] += totalAssets;
+            arr[1] += t.riskTolerance;
+            arr[2] += (t.portfolio.cash + t.portfolio.reservedCash);
+            arr[3] += stockVal;
+            arr[4] += t.privateSavings;
+
+            if (t.isActive()) {
+                cnt[0]++;
+            }
+            cnt[1]++;
+        }
+
+        for (Map.Entry<String, double[]> entry : stats.entrySet()) {
+            String type = entry.getKey();
+            double[] arr = entry.getValue();
+            int[] cnt = counts.get(type);
+
+            AgentTypeDailyEntity entity = new AgentTypeDailyEntity();
+            entity.setDay(day);
+            entity.setAgentType(type);
+            entity.setTotalAssets(arr[0]);
+            entity.setAvgRiskTolerance(cnt[0] > 0 ? arr[1] / cnt[0] : 0.0);
+            entity.setActiveCount(cnt[0]);
+            entity.setTotalCount(cnt[1]);
+            entity.setCash(arr[2]);
+            entity.setStockValue(arr[3]);
+            entity.setPrivateSavings(arr[4]);
+            mapper.insert(entity);
+        }
     }
 
     private void logStockDaily(int day) {

@@ -26,18 +26,38 @@ public class SectorAnalysisService {
     public SectorStatsDTO getSectorStats(String dbFile) {
         SectorStatsDTO result = new SectorStatsDTO();
         try (SqlSession session = databaseService.openSession(dbFile)) {
-            StockDailyMapper mapper = session.getMapper(StockDailyMapper.class);
-            List<StockDailyEntity> aggregates = mapper.selectSectorAggregates();
+            jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.SectorDailyMapper sectorDailyMapper = 
+                    session.getMapper(jp.ac.tsukuba.eclab.assetmarketsimulation.mapper.SectorDailyMapper.class);
+            List<jp.ac.tsukuba.eclab.assetmarketsimulation.entity.SectorDailyEntity> dailyList = null;
+            try {
+                if (sectorDailyMapper.count() > 0) {
+                    dailyList = sectorDailyMapper.selectAll();
+                }
+            } catch (Exception e) {
+                // Table might not exist in old database files, fallback to aggregate
+            }
 
             List<SectorData> marketCapData = new ArrayList<>();
             List<SectorData> peData = new ArrayList<>();
 
-            for (StockDailyEntity e : aggregates) {
-                String sector = e.getSectorName() != null ? e.getSectorName() : "";
-                marketCapData.add(new SectorData(e.getDay(), sector,
-                        e.getTotalMarketCap() != null ? e.getTotalMarketCap() : 0));
-                peData.add(new SectorData(e.getDay(), sector,
-                        e.getPeTtm() != null ? e.getPeTtm() : 0));
+            if (dailyList != null && !dailyList.isEmpty()) {
+                for (var e : dailyList) {
+                    String sector = e.getSectorName() != null ? e.getSectorName() : "";
+                    marketCapData.add(new SectorData(e.getDay(), sector,
+                            e.getTotalMarketCap() != null ? e.getTotalMarketCap() : 0));
+                    peData.add(new SectorData(e.getDay(), sector,
+                            e.getAvgPe() != null ? e.getAvgPe() : 0));
+                }
+            } else {
+                StockDailyMapper mapper = session.getMapper(StockDailyMapper.class);
+                List<StockDailyEntity> aggregates = mapper.selectSectorAggregates();
+                for (StockDailyEntity e : aggregates) {
+                    String sector = e.getSectorName() != null ? e.getSectorName() : "";
+                    marketCapData.add(new SectorData(e.getDay(), sector,
+                            e.getTotalMarketCap() != null ? e.getTotalMarketCap() : 0));
+                    peData.add(new SectorData(e.getDay(), sector,
+                            e.getPeTtm() != null ? e.getPeTtm() : 0));
+                }
             }
 
             result.marketCapHistory = marketCapData;

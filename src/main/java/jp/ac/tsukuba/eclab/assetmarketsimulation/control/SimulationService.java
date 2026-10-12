@@ -69,6 +69,7 @@ public class SimulationService {
             // Apply scenario
             MarketScenario scenario = ScenarioRegistry.getScenario(config.getScenarioName());
             sim.setScenario(scenario);
+            sim.setSimulationConfig(config);
 
             currentSession.setSimulation(sim);
             currentSession.setBaseStepDelayMs((int) config.getStepDelay());

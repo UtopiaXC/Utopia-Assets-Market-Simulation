@@ -57,8 +57,7 @@ public class StockController {
             @PathVariable String dbFile,
             @PathVariable String stockId) {
         try {
-            StockDetailDTO detail = stockAnalysisService.getStockDetail(dbFile, stockId, 1);
-            return ResponseEntity.ok(Map.of("history", detail.history));
+            return ResponseEntity.ok(Map.of("history", stockAnalysisService.getStockHistoryOnly(dbFile, stockId)));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }

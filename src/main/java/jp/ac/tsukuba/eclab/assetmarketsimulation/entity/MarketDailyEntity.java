@@ -14,6 +14,9 @@ public class MarketDailyEntity {
     private Double socialWealthPool;
     private Integer activeAgents;
 
+    private Double totalPrivateSavings;
+    private Double totalAgentAssets;
+
     public Integer getDay() { return day; }
     public void setDay(Integer day) { this.day = day; }
     public Double getOpen() { return open; }
@@ -38,4 +41,8 @@ public class MarketDailyEntity {
     public void setSocialWealthPool(Double socialWealthPool) { this.socialWealthPool = socialWealthPool; }
     public Integer getActiveAgents() { return activeAgents; }
     public void setActiveAgents(Integer activeAgents) { this.activeAgents = activeAgents; }
+    public Double getTotalPrivateSavings() { return totalPrivateSavings; }
+    public void setTotalPrivateSavings(Double totalPrivateSavings) { this.totalPrivateSavings = totalPrivateSavings; }
+    public Double getTotalAgentAssets() { return totalAgentAssets; }
+    public void setTotalAgentAssets(Double totalAgentAssets) { this.totalAgentAssets = totalAgentAssets; }
 }

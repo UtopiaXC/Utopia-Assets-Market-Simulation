@@ -60,11 +60,18 @@ public class DynamicSqlSessionManager {
     }
 
     private static SqlSessionFactory buildFactory(String dbPath) {
-        // UnpooledDataSource for SQLite (single writer constraint).
-        // For MySQL migration, switch to PooledDataSource + different driver/URL.
+        // High-performance connection URL with connection-level SQLite PRAGMAs
+        String jdbcUrl = "jdbc:sqlite:" + dbPath + "?"
+                + "journal_mode=WAL"
+                + "&synchronous=NORMAL"
+                + "&cache_size=-64000"       // 64MB memory cache
+                + "&mmap_size=268435456"     // 256MB memory-mapped I/O
+                + "&temp_store=MEMORY"       // Memory temporary tables
+                + "&busy_timeout=10000";     // 10s busy timeout for concurrent read/write
+
         UnpooledDataSource dataSource = new UnpooledDataSource(
                 "org.sqlite.JDBC",
-                "jdbc:sqlite:" + dbPath,
+                jdbcUrl,
                 null,
                 null
         );
@@ -87,6 +94,8 @@ public class DynamicSqlSessionManager {
         configuration.addMapper(StockMapper.class);
         configuration.addMapper(AgentMapper.class);
         configuration.addMapper(MarketDailyMapper.class);
+        configuration.addMapper(SectorDailyMapper.class);
+        configuration.addMapper(AgentTypeDailyMapper.class);
         configuration.addMapper(StockDailyMapper.class);
         configuration.addMapper(AgentAssetDailyMapper.class);
         configuration.addMapper(HoldingsMapper.class);
@@ -103,15 +112,15 @@ public class DynamicSqlSessionManager {
         try {
             // ====================================================
             // Step 1: Execute PRAGMAs on a separate auto-commit connection.
-            // SQLite requires PRAGMA journal_mode to be set OUTSIDE a transaction.
-            // MyBatis openSession() defaults to autoCommit=false (i.e. inside a transaction).
             // ====================================================
             try (SqlSession pragmaSession = factory.openSession(true)) { // autoCommit = true
                 Connection conn = pragmaSession.getConnection();
                 try (Statement stmt = conn.createStatement()) {
                     stmt.execute("PRAGMA journal_mode = WAL");
                     stmt.execute("PRAGMA synchronous = NORMAL");
-                    stmt.execute("PRAGMA cache_size = 10000");
+                    stmt.execute("PRAGMA cache_size = -64000");
+                    stmt.execute("PRAGMA mmap_size = 268435456");
+                    stmt.execute("PRAGMA temp_store = MEMORY");
                     stmt.execute("PRAGMA foreign_keys = ON");
                 }
             }
@@ -124,6 +133,8 @@ public class DynamicSqlSessionManager {
                 schema.createStockTable();
                 schema.createAgentTable();
                 schema.createMarketDailyTable();
+                schema.createSectorDailyTable();
+                schema.createAgentTypeDailyTable();
                 schema.createStockDailyTable();
                 schema.createAgentAssetDailyTable();
                 schema.createHoldingsSnapshotTable();
@@ -134,13 +145,22 @@ public class DynamicSqlSessionManager {
 
                 schema.createIndexStockDailyDay();
                 schema.createIndexStockDailyStock();
+                schema.createIndexStockDailyDayStock();
+                schema.createIndexSectorDailyDay();
+                schema.createIndexSectorDailyName();
+                schema.createIndexAgentTypeDailyDay();
+                schema.createIndexAgentTypeDailyType();
                 schema.createIndexAgentAssetDay();
                 schema.createIndexAgentAssetActive();
                 schema.createIndexTradeRecordDay();
                 schema.createIndexTradeRecordStock();
                 schema.createIndexTradeRecordBuyer();
                 schema.createIndexTradeRecordSeller();
+                schema.createIndexHoldingsSnapshotAgentDay();
                 schema.createIndexHoldingsDeltaDay();
+                schema.createIndexHoldingsDeltaAgentDay();
+                schema.createIndexStockSectorId();
+                schema.createIndexAgentAgentType();
                 schema.createIndexEventLogDay();
 
                 session.commit();
