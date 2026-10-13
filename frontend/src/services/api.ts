@@ -156,4 +156,11 @@ export const controlApi = {
     }) => api.post('/control/shock/inject', params)
 }
 
+// Validation API
+export const validationApi = {
+    getStylizedFacts: (dbFile: string, stockId?: number, signal?: AbortSignal) =>
+        api.get(`/simulations/${dbFile}/validation`, { params: { stockId }, signal })
+}
+
 export default api
+

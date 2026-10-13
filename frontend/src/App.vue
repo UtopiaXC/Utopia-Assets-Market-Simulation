@@ -37,7 +37,8 @@ import {
   SunnyOutline,
   MoonOutline,
   DesktopOutline,
-  DocumentTextOutline
+  DocumentTextOutline,
+  ShieldCheckmarkOutline
 } from '@vicons/ionicons5'
 import { useSimulationStore } from '@/stores/simulation'
 
@@ -166,6 +167,12 @@ const menuOptions = computed(() => [
     label: 'Compare',
     key: 'compare',
     icon: () => h(NIcon, null, { default: () => h(GitCompareOutline) })
+  },
+  {
+    label: 'Validation',
+    key: 'validation',
+    icon: () => h(NIcon, null, { default: () => h(ShieldCheckmarkOutline) }),
+    disabled: !store.isConnected
   },
   {
     label: 'Run Simulation',

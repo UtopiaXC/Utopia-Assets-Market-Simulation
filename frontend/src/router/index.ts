@@ -60,6 +60,12 @@ const router = createRouter({
       meta: { title: 'Compare Simulations' }
     },
     {
+      path: '/validation',
+      name: 'validation',
+      component: () => import('../views/Validation.vue'),
+      meta: { title: 'Stylized Facts Validation' }
+    },
+    {
       path: '/control',
       name: 'control',
       component: () => import('../views/Control.vue'),
