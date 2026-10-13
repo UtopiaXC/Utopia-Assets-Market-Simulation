@@ -90,20 +90,20 @@
       <div class="progress-section">
         <div class="progress-meta">
           <span class="meta-label">
-            <strong>Day {{ status.currentDay }}</strong> / {{ config.simulationDays }} Days
+            <strong>Day {{ status.currentDay }}</strong> / {{ displayTotalDays }} Days
             <span class="step-counter">(Step {{ status.currentStepInDay || 0 }} / {{ status.totalStepsPerDay || config.stepsPerDay }})</span>
           </span>
-          <span class="meta-percentage">{{ (status.progress || 0).toFixed(2) }}%</span>
+          <span class="meta-percentage">{{ displayProgress.toFixed(2) }}%</span>
         </div>
         <n-progress 
           type="line" 
-          :percentage="Number((status.progress || 0).toFixed(2))" 
+          :percentage="Number(displayProgress.toFixed(2))" 
           :indicator-placement="'inside'" 
           :height="18"
           :processing="isRunning"
           :status="status.state === 'ERROR' ? 'error' : status.state === 'COMPLETED' ? 'success' : 'default'"
         >
-          {{ (status.progress || 0).toFixed(2) }}%
+          {{ displayProgress.toFixed(2) }}%
         </n-progress>
 
         <!-- Speed HUD -->
@@ -599,7 +599,7 @@
             <n-grid :cols="3" :x-gap="16">
               <n-grid-item>
                 <n-form-item label="Trigger Day">
-                  <n-input-number v-model:value="policyForm.day" :min="1" :max="config.simulationDays" style="width: 100%" />
+                  <n-input-number v-model:value="policyForm.day" :min="1" :max="displayTotalDays" style="width: 100%" />
                 </n-form-item>
               </n-grid-item>
               <n-grid-item>
@@ -664,7 +664,7 @@
             <n-grid :cols="4" :x-gap="16">
               <n-grid-item>
                 <n-form-item label="Trigger Day">
-                  <n-input-number v-model:value="shockForm.day" :min="1" :max="config.simulationDays" style="width: 100%" />
+                  <n-input-number v-model:value="shockForm.day" :min="1" :max="displayTotalDays" style="width: 100%" />
                 </n-form-item>
               </n-grid-item>
               <n-grid-item>
@@ -1086,6 +1086,7 @@ function onPresetChange(presetId: string) {
   const preset = presets.find(p => p.id === presetId)
   if (preset) {
     for (const [key, value] of Object.entries(preset.values)) {
+      if (key === 'simulationDays') continue // preserve user-configured simulation days
       (config.value as any)[key] = value
     }
     if (preset.values.stepDelay !== undefined) {
@@ -1094,6 +1095,22 @@ function onPresetChange(presetId: string) {
     message.success(`Applied configuration preset: ${preset.name}`)
   }
 }
+
+// Computed Total Days & Progress (Dynamically tracks running session)
+const displayTotalDays = computed(() => {
+  if (status.value.totalDays && status.value.totalDays > 0) {
+    return status.value.totalDays
+  }
+  return config.value.simulationDays || 1000
+})
+
+const displayProgress = computed(() => {
+  const total = displayTotalDays.value
+  if (total > 0 && status.value.currentDay > 0) {
+    return Math.min(100, Math.max(0, (status.value.currentDay / total) * 100))
+  }
+  return Math.min(100, Math.max(0, status.value.progress || 0))
+})
 
 // Computed Status
 const hasSession = computed(() => status.value.sessionId !== null && status.value.state !== 'NO_SESSION')
@@ -1126,6 +1143,15 @@ async function loadStatus() {
     status.value = data
     if (data.speedMultiplier !== undefined) {
       currentSpeed.value = data.speedMultiplier
+    }
+    // Synchronize running session parameters into form view
+    if (data.state === 'RUNNING' || data.state === 'PAUSED') {
+      if (data.totalDays && data.totalDays > 0) {
+        config.value.simulationDays = data.totalDays
+      }
+      if (data.simulationName) {
+        simulationName.value = data.simulationName
+      }
     }
   } catch (e) {}
 }
