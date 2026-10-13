@@ -86,9 +86,9 @@ public class StockMarketSim extends SimState {
         }
 
         // 3. Create services
-        valuation = new ValuationService();
-        socialNetwork = new SocialNetwork(socialTopK, Config.SOCIAL_NETWORK_REBUILD_INTERVAL);
-        leverageService = new LeverageService();
+        valuation = (simulationConfig != null) ? new ValuationService(simulationConfig) : new ValuationService();
+        socialNetwork = (simulationConfig != null) ? new SocialNetwork(simulationConfig) : new SocialNetwork(socialTopK, Config.SOCIAL_NETWORK_REBUILD_INTERVAL);
+        leverageService = (simulationConfig != null) ? new LeverageService(simulationConfig) : new LeverageService();
 
         // 4. Create agents
         traders = new Bag();
@@ -97,9 +97,18 @@ public class StockMarketSim extends SimState {
         // 5. Initialize market
         market.setup(this);
 
+        // 5.1 Initialize trader NAV baseline and hierarchical social network
+        for (int i = 0; i < traders.size(); i++) {
+            if (traders.get(i) instanceof BaseTrader bt) {
+                bt.setLastDayNav(bt.calculateCurrentNav());
+            }
+        }
+        socialNetwork.rebuild(traders);
+
         // 6. Social wealth pool
-        double totalCapital = Config.ECONOMY_TOTAL_CAPITAL_POOL;
-        socialWealthPool = totalCapital * Config.ECONOMY_SOCIAL_POOL_RATIO;
+        double totalCapital = (simulationConfig != null) ? simulationConfig.getTotalCapitalPool() : Config.ECONOMY_TOTAL_CAPITAL_POOL;
+        double poolRatio = (simulationConfig != null) ? simulationConfig.getSocialPoolRatio() : Config.ECONOMY_SOCIAL_POOL_RATIO;
+        socialWealthPool = totalCapital * poolRatio;
 
         // 7. Initialize logger
         dbLogger = new SimulationDataLogger(this.seed(), simulationName);
@@ -132,7 +141,10 @@ public class StockMarketSim extends SimState {
         // 11. Leverage daily tasks (interest & margin check)
         schedule.scheduleRepeating(0, 995, new LeverageDailyStep());
 
-        // 12. Apply scenario
+        // 12. Daily reputation and dynamic social weight update (end of day close)
+        schedule.scheduleRepeating(0, 994, new DailyReputationStep());
+
+        // 13. Apply scenario
         if (scenario != null) {
             scenario.apply(this);
         }
@@ -147,21 +159,25 @@ public class StockMarketSim extends SimState {
     }
 
     private void createAgents() {
-        int totalAgents = Config.ECONOMY_TOTAL_AGENTS;
-        double totalCapitalPool = Config.ECONOMY_TOTAL_CAPITAL_POOL;
+        int totalAgents = (simulationConfig != null) ? simulationConfig.getTotalAgents() : Config.ECONOMY_TOTAL_AGENTS;
+        double totalCapitalPool = (simulationConfig != null) ? simulationConfig.getTotalCapitalPool() : Config.ECONOMY_TOTAL_CAPITAL_POOL;
 
         // Population splits
-        int numInstitutional = (int) (totalAgents * Config.AGENT_INSTITUTIONAL_POPULATION_RATIO);
-        int numRetailNoise = totalAgents - numInstitutional;
-        int numRetail = (int) (numRetailNoise * Config.AGENT_RETAIL_SUB_RATIO);
-        int numNoise = numRetailNoise - numRetail;
+        double instPopRatio = (simulationConfig != null) ? simulationConfig.getInstitutionalRatio() : Config.AGENT_INSTITUTIONAL_POPULATION_RATIO;
+        double instCapRatio = (simulationConfig != null) ? simulationConfig.getInstitutionalCapitalRatio() : Config.AGENT_INSTITUTIONAL_CAPITAL_RATIO;
+        double retSubRatio = (simulationConfig != null) ? simulationConfig.getRetailSubRatio() : Config.AGENT_RETAIL_SUB_RATIO;
+
+        int numInstitutional = (int) (totalAgents * instPopRatio);
+        int numRetailNoise = Math.max(1, totalAgents - numInstitutional);
+        int numRetail = (int) (numRetailNoise * retSubRatio);
+        int numNoise = Math.max(0, numRetailNoise - numRetail);
 
         // Capital splits
-        double institutionalCapitalPool = totalCapitalPool * Config.AGENT_INSTITUTIONAL_CAPITAL_RATIO;
+        double institutionalCapitalPool = totalCapitalPool * instCapRatio;
         double retailNoiseCapitalPool = totalCapitalPool - institutionalCapitalPool;
 
-        double avgInstitutionalCash = institutionalCapitalPool / numInstitutional;
-        double avgRetailNoiseCash = retailNoiseCapitalPool / numRetailNoise;
+        double avgInstitutionalCash = numInstitutional > 0 ? institutionalCapitalPool / numInstitutional : 0;
+        double avgRetailNoiseCash = numRetailNoise > 0 ? retailNoiseCapitalPool / numRetailNoise : 0;
 
         int traderId = 0;
 
@@ -173,7 +189,7 @@ public class StockMarketSim extends SimState {
             double riskTol = ThreadLocalRandom.current().nextDouble(0.2, 0.6);
             int maxStocks = Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN +
                     random.nextInt(Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MAX - Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN + 1);
-            InstitutionalTrader t = new InstitutionalTrader(traderId++, cash, riskTol, maxStocks);
+            InstitutionalTrader t = new InstitutionalTrader(traderId++, cash, riskTol, maxStocks, simulationConfig);
             traders.add(t);
         }
 
@@ -185,7 +201,7 @@ public class StockMarketSim extends SimState {
             double riskTol = ThreadLocalRandom.current().nextDouble(0.3, 0.8);
             int maxStocks = Config.AGENT_RETAIL_MAX_STOCKS_MIN +
                     random.nextInt(Config.AGENT_RETAIL_MAX_STOCKS_MAX - Config.AGENT_RETAIL_MAX_STOCKS_MIN + 1);
-            RetailTrader t = new RetailTrader(traderId++, cash, riskTol, maxStocks);
+            RetailTrader t = new RetailTrader(traderId++, cash, riskTol, maxStocks, simulationConfig);
             traders.add(t);
         }
 
@@ -197,7 +213,7 @@ public class StockMarketSim extends SimState {
             double riskTol = ThreadLocalRandom.current().nextDouble(0.5, 1.0);
             int maxStocks = Config.AGENT_NOISE_MAX_STOCKS_MIN +
                     random.nextInt(Config.AGENT_NOISE_MAX_STOCKS_MAX - Config.AGENT_NOISE_MAX_STOCKS_MIN + 1);
-            NoiseTrader t = new NoiseTrader(traderId++, cash, riskTol, maxStocks);
+            NoiseTrader t = new NoiseTrader(traderId++, cash, riskTol, maxStocks, simulationConfig);
             traders.add(t);
         }
 
@@ -290,9 +306,9 @@ public class StockMarketSim extends SimState {
 
                             BaseTrader newTrader;
                             if (random.nextDouble() < 0.5) {
-                                newTrader = new RetailTrader(newId, entryCapital, riskTol, maxStocks);
+                                newTrader = new RetailTrader(newId, entryCapital, riskTol, maxStocks, simulationConfig);
                             } else {
-                                newTrader = new NoiseTrader(newId, entryCapital, riskTol, maxStocks);
+                                newTrader = new NoiseTrader(newId, entryCapital, riskTol, maxStocks, simulationConfig);
                             }
 
                             traders.add(newTrader);
@@ -335,10 +351,38 @@ public class StockMarketSim extends SimState {
 
             if (leverageService != null) {
                 // Charge daily interest
-                leverageService.chargeDailyInterest(traders);
+                leverageService.chargeDailyInterest(traders, market);
 
                 // Check margin calls (may trigger forced liquidation → short squeeze)
                 leverageService.checkMarginCalls(traders, market);
+            }
+        }
+    }
+
+    /**
+     * Daily reputation update step (end of day close)
+     * 计算当日市场基准回报率与各机构 NAV 超额收益率，更新动态信誉分数 (R_{k,t})，严格消除前瞻偏差
+     */
+    private class DailyReputationStep implements Steppable {
+        @Override
+        public void step(SimState state) {
+            long currentStep = schedule.getSteps();
+            if (currentStep % stepsPerDay != stepsPerDay - 1) return; // 收盘时刻
+
+            // 获取当日市场基准回报率 r_{m,t}
+            double marketReturn = market.getRecentReturn(1);
+
+            // 更新所有活跃交易者的每日 NAV 与机构信誉
+            for (int i = 0; i < traders.size(); i++) {
+                Object obj = traders.get(i);
+                if (obj instanceof BaseTrader bt && bt.isActive()) {
+                    bt.updateDailyReputation(marketReturn);
+                }
+            }
+
+            // 更新社交网络权重 (基于最新信誉，供次日 T+1 交易使用)
+            if (socialNetwork != null) {
+                socialNetwork.updateDynamicWeights(traders);
             }
         }
     }

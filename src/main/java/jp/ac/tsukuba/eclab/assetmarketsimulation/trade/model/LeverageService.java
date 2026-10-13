@@ -1,6 +1,7 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model;
 
 import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicySlot;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
@@ -28,8 +29,17 @@ public class LeverageService {
     private int totalForcedLiquidations = 0;
 
     public LeverageService() {
-        this.marginCallRatio = Config.LEVERAGE_MARGIN_CALL_RATIO;
-        this.dailyInterestRate = Config.LEVERAGE_INTEREST_RATE_DAILY;
+        this(null);
+    }
+
+    public LeverageService(SimulationConfig cfg) {
+        if (cfg != null) {
+            this.marginCallRatio = cfg.getLeverageMarginCallRatio();
+            this.dailyInterestRate = cfg.getLeverageInterestRateDaily();
+        } else {
+            this.marginCallRatio = Config.LEVERAGE_MARGIN_CALL_RATIO;
+            this.dailyInterestRate = Config.LEVERAGE_INTEREST_RATE_DAILY;
+        }
     }
 
     /**
@@ -38,11 +48,32 @@ public class LeverageService {
      * @param maxLeverageRatio 当前政策允许的最大杠杆倍率
      * @return 实际借入的金额 (0 表示未借)
      */
+    /**
+     * 请求配资
+     * @param borrower 借款人
+     * @param maxLeverageRatio 当前政策允许的最大杠杆倍率
+     * @return 实际借入的金额 (0 表示未借)
+     */
     public double requestLeverage(BaseTrader borrower, double maxLeverageRatio) {
+        return requestLeverage(borrower, maxLeverageRatio, null);
+    }
+
+    public double requestLeverage(BaseTrader borrower, double maxLeverageRatio, Market market) {
         if (maxLeverageRatio <= 1.0) return 0; // 不允许杠杆
+
+        // 流动性紧缩冲击 (Liquidity Squeeze Shock): 暂停所有新增配资
+        if (market != null && market.shockManager != null && market.shockManager.isLiquidityFrozen(market.getCurrentDay())) {
+            return 0;
+        }
 
         double netEquity = borrower.portfolio.getNetEquity();
         if (netEquity <= 0) return 0;
+
+        // 存款准备金率约束 (RRR 极高时信贷冻结)
+        if (market != null && market.policySlot != null) {
+            double rrr = market.policySlot.getRequiredReserveRatio();
+            if (rrr >= 0.95) return 0;
+        }
 
         // 当前已借额度
         double currentBorrowed = borrower.portfolio.borrowedCash;
@@ -71,6 +102,11 @@ public class LeverageService {
     public void checkMarginCalls(Bag traders, Market market) {
         Set<BaseTrader> toForceLiquidate = new HashSet<>();
 
+        // 流动性紧缩冲击带来的额外维持保证金上调
+        double extraMargin = (market != null && market.shockManager != null) ?
+                market.shockManager.getExtraMarginRequirement(market.getCurrentDay()) : 0.0;
+        double effectiveMarginCallRatio = this.marginCallRatio + extraMargin;
+
         for (int i = 0; i < traders.size(); i++) {
             Object obj = traders.get(i);
             if (!(obj instanceof BaseTrader t)) continue;
@@ -80,7 +116,7 @@ public class LeverageService {
             double marginRatio = t.portfolio.getMarginRatio();
 
             // 保证金率低于维持线 → 强制平仓
-            if (marginRatio < marginCallRatio) {
+            if (marginRatio < effectiveMarginCallRatio) {
                 toForceLiquidate.add(t);
                 totalMarginCalls++;
             }
@@ -125,16 +161,26 @@ public class LeverageService {
     }
 
     /**
-     * 每日利息计费
+     * 每日利息计费 (联动基准利率政策)
      */
     public void chargeDailyInterest(Bag traders) {
+        chargeDailyInterest(traders, null);
+    }
+
+    public void chargeDailyInterest(Bag traders, Market market) {
+        double rate = dailyInterestRate;
+        if (market != null && market.policySlot != null) {
+            double benchmarkRate = market.policySlot.getBenchmarkInterestRate();
+            rate = (benchmarkRate + 0.05) / 250.0;
+        }
+
         for (int i = 0; i < traders.size(); i++) {
             Object obj = traders.get(i);
             if (!(obj instanceof BaseTrader t)) continue;
             if (!t.isActive()) continue;
             if (t.portfolio.borrowedCash <= 0) continue;
 
-            double interest = t.portfolio.borrowedCash * dailyInterestRate;
+            double interest = t.portfolio.borrowedCash * rate;
             t.portfolio.cash -= interest;
             // 利息不增加借款本金，但减少现金
         }

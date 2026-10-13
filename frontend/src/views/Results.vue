@@ -19,6 +19,7 @@ import {
 } from '@vicons/ionicons5'
 import { simulationApi } from '@/services/api'
 import { useSimulationStore } from '@/stores/simulation'
+import { formatFileSize } from '@/utils/format'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -43,8 +44,16 @@ const columns = [
   { 
     title: 'Days', 
     key: 'days',
-    width: 100,
-    sorter: (row1: any, row2: any) => row1.days - row2.days
+    width: 110,
+    sorter: (row1: any, row2: any) => (row1.days || 0) - (row2.days || 0),
+    render: (row: any) => `${row.days || 0} Days`
+  },
+  {
+    title: 'DB Size',
+    key: 'size',
+    width: 120,
+    sorter: (row1: any, row2: any) => (row1.size || 0) - (row2.size || 0),
+    render: (row: any) => formatFileSize(row.size || 0)
   },
   { 
     title: 'Created', 
@@ -54,7 +63,7 @@ const columns = [
   { 
     title: 'Action', 
     key: 'action',
-    width: 200,
+    width: 160,
     render: (row: any) => {
       return h(NSpace, null, {
         default: () => [
@@ -77,10 +86,11 @@ const columns = [
 async function loadResults() {
   loading.value = true
   try {
-    const data = await simulationApi.listSimulations()
+    const data = await simulationApi.listSimulations() as any[]
     simulationResults.value = data.map((sim: any) => ({
       name: sim.name,
-      days: 0, // Backend doesn't provide this yet without opening DB
+      days: sim.days || 0,
+      size: sim.size || 0,
       created: new Date(sim.lastModified).toLocaleString(),
       lastModified: sim.lastModified
     }))

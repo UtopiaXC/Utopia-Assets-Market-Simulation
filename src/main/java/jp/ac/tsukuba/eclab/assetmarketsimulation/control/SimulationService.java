@@ -3,6 +3,8 @@ package jp.ac.tsukuba.eclab.assetmarketsimulation.control;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicySlot;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicyEvent;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.SimulationEvent;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketShockEvent;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketScenario;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.ScenarioRegistry;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
@@ -26,6 +28,9 @@ public class SimulationService {
     // Status listeners (for WebSocket)
     private final List<StatusListener> statusListeners = new CopyOnWriteArrayList<>();
 
+    // Scheduled simulation events (Policy and Market Shock)
+    private final List<SimulationEvent> scheduledEvents = new CopyOnWriteArrayList<>();
+
     public interface StatusListener {
         void onStatusUpdate(SimulationSession.SessionStatus status);
     }
@@ -41,7 +46,7 @@ public class SimulationService {
     public SimulationSession.SessionStatus getStatus() {
         if (currentSession == null) {
             return new SimulationSession.SessionStatus(
-                    null, "NO_SESSION", 0, 0, 0, 0, 0, 1.0, null, 0, 0);
+                    null, null, "NO_SESSION", 0, 0, 0, 0, 0, 1.0, null, 0, 0);
         }
         return currentSession.toStatus();
     }
@@ -70,6 +75,15 @@ public class SimulationService {
             MarketScenario scenario = ScenarioRegistry.getScenario(config.getScenarioName());
             sim.setScenario(scenario);
             sim.setSimulationConfig(config);
+
+            // Register pre-scheduled policy and shock events
+            int stepsPerDay = config.getStepsPerDay();
+            for (SimulationEvent event : scheduledEvents) {
+                if (!event.isExecuted()) {
+                    long targetStep = (long) event.getTargetDay() * stepsPerDay;
+                    sim.schedule.scheduleOnce(targetStep, 0, event);
+                }
+            }
 
             currentSession.setSimulation(sim);
             currentSession.setBaseStepDelayMs((int) config.getStepDelay());
@@ -203,6 +217,30 @@ public class SimulationService {
     }
 
     /**
+     * Reset the simulation session
+     */
+    public SimulationSession.SessionStatus reset() {
+        synchronized (sessionLock) {
+            if (currentSession != null) {
+                if (currentSession.isRunning()) {
+                    currentSession.interrupt();
+                }
+                StockMarketSim sim = currentSession.getSimulation();
+                if (sim != null && sim.dbLogger != null) {
+                    try {
+                        sim.dbLogger.close();
+                    } catch (Exception ignored) {}
+                }
+                currentSession = null;
+            }
+            scheduledEvents.clear();
+            PolicyEvent.resetIdGenerator();
+            MarketShockEvent.resetIdGenerator();
+            return getStatus();
+        }
+    }
+
+    /**
      * Set speed multiplier
      */
     public SimulationSession.SessionStatus setSpeed(double multiplier) {
@@ -228,12 +266,26 @@ public class SimulationService {
             policy.put("circuitBreakerThreshold", slot.getCircuitBreakerThreshold());
             policy.put("maxLeverageRatio", slot.getMaxLeverageRatio());
             policy.put("settlementDays", slot.getSettlementDays());
+            policy.put("benchmarkInterestRate", slot.getBenchmarkInterestRate());
+            policy.put("requiredReserveRatio", slot.getRequiredReserveRatio());
+            policy.put("stampDutyRate", slot.getStampDutyRate());
+            policy.put("capitalGainsTaxRate", slot.getCapitalGainsTaxRate());
+            policy.put("dividendTaxRate", slot.getDividendTaxRate());
+            policy.put("earningsDisclosurePeriodDays", slot.getEarningsDisclosurePeriodDays());
+            policy.put("opinionCensorshipDamping", slot.getOpinionCensorshipDamping());
         } else {
             // Defaults
             policy.put("priceLimitRatio", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_PRICE_LIMIT_RATIO);
             policy.put("circuitBreakerThreshold", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_CIRCUIT_BREAKER_THRESHOLD);
             policy.put("maxLeverageRatio", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_MAX_LEVERAGE_RATIO);
             policy.put("settlementDays", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_SETTLEMENT_DAYS);
+            policy.put("benchmarkInterestRate", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_BENCHMARK_INTEREST_RATE);
+            policy.put("requiredReserveRatio", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_REQUIRED_RESERVE_RATIO);
+            policy.put("stampDutyRate", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_STAMP_DUTY_RATE);
+            policy.put("capitalGainsTaxRate", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_CAPITAL_GAINS_TAX_RATE);
+            policy.put("dividendTaxRate", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_DIVIDEND_TAX_RATE);
+            policy.put("earningsDisclosurePeriodDays", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_EARNINGS_DISCLOSURE_DAYS);
+            policy.put("opinionCensorshipDamping", jp.ac.tsukuba.eclab.assetmarketsimulation.Config.POLICY_OPINION_CENSORSHIP_DAMPING);
         }
         return policy;
     }
@@ -252,6 +304,11 @@ public class SimulationService {
                 metrics.put("totalMarketCap", sim.market.marketTotalMarketCap);
                 metrics.put("turnoverRate", sim.market.marketTurnoverRate);
                 metrics.put("circuitBreakerTriggered", sim.market.isCircuitBreakerTriggered() ? 1.0 : 0.0);
+
+                double dayReturn = sim.market.indexOpen > 0 ? (sim.market.marketIndex - sim.market.indexOpen) / sim.market.indexOpen : 0.0;
+                double cbThreshold = sim.market.policySlot != null ? sim.market.policySlot.getCircuitBreakerThreshold() : 0.0;
+                metrics.put("dayReturn", dayReturn);
+                metrics.put("circuitBreakerThreshold", cbThreshold);
             }
             metrics.put("activeAgents", (double) currentSession.getActiveAgents());
             metrics.put("socialWealthPool", sim.socialWealthPool);
@@ -297,24 +354,65 @@ public class SimulationService {
      * Inject a policy change event scheduled for a specific day.
      * Uses MASON's schedule to fire the event at the correct simulation step.
      */
-    public void injectPolicyEvent(int targetDay, String policyType, double value, String description) {
-        if (currentSession == null || currentSession.getSimulation() == null) {
-            throw new IllegalStateException("No running simulation");
-        }
-
-        StockMarketSim sim = currentSession.getSimulation();
+    public PolicyEvent injectPolicyEvent(int targetDay, String policyType, double value, String description) {
         PolicyEvent.PolicyType type =
                 PolicyEvent.PolicyType.valueOf(policyType);
 
         PolicyEvent event =
                 new PolicyEvent(targetDay, type, value, description);
+        scheduledEvents.add(event);
 
-        // Schedule at the start of the target day
-        int stepsPerDay = sim.market != null ? sim.market.STEPS_PER_DAY : 1;
-        long targetStep = (long) targetDay * stepsPerDay;
-        sim.schedule.scheduleOnce(targetStep, 0, event);
+        if (currentSession != null && currentSession.getSimulation() != null) {
+            StockMarketSim sim = currentSession.getSimulation();
+            int stepsPerDay = sim.market != null ? sim.market.STEPS_PER_DAY : 1;
+            long targetStep = (long) targetDay * stepsPerDay;
+            sim.schedule.scheduleOnce(targetStep, 0, event);
+            System.out.println("[INJECT] Policy event scheduled: " + policyType + " -> " + value + " on day " + targetDay);
+        } else {
+            System.out.println("[INJECT] Policy event pre-scheduled: " + policyType + " -> " + value + " on day " + targetDay);
+        }
+        return event;
+    }
 
-        System.out.println("[INJECT] Policy event scheduled: " + policyType + " -> " + value + " on day " + targetDay);
+    /**
+     * Inject a market shock event scheduled for a specific day.
+     */
+    public MarketShockEvent injectMarketShock(int targetDay, String shockType, double magnitude,
+                                              int halfLifeDays, String targetSector, int targetTraderId, String description) {
+        MarketShockEvent.ShockType type =
+                MarketShockEvent.ShockType.valueOf(shockType);
+
+        MarketShockEvent event =
+                new MarketShockEvent(targetDay, type, magnitude, halfLifeDays, targetSector, targetTraderId, description);
+        scheduledEvents.add(event);
+
+        if (currentSession != null && currentSession.getSimulation() != null) {
+            StockMarketSim sim = currentSession.getSimulation();
+            int stepsPerDay = sim.market != null ? sim.market.STEPS_PER_DAY : 1;
+            long targetStep = (long) targetDay * stepsPerDay;
+            sim.schedule.scheduleOnce(targetStep, 0, event);
+            System.out.println("[INJECT] Market shock scheduled: " + shockType + " -> " + magnitude + " on day " + targetDay);
+        } else {
+            System.out.println("[INJECT] Market shock pre-scheduled: " + shockType + " -> " + magnitude + " on day " + targetDay);
+        }
+        return event;
+    }
+
+    /**
+     * Get all scheduled policy and shock events and their execution state
+     */
+    public List<Map<String, Object>> getScheduledEvents() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        int currentDay = currentSession != null ? currentSession.getCurrentDay() : 0;
+        boolean sessionRunningOrDone = currentSession != null && (currentSession.isRunning() || currentSession.isPaused() || "COMPLETED".equals(currentSession.toStatus().state()));
+        for (SimulationEvent e : scheduledEvents) {
+            Map<String, Object> map = new LinkedHashMap<>(e.toMap());
+            boolean isExec = e.isExecuted() || (sessionRunningOrDone && currentDay >= e.getTargetDay());
+            map.put("executed", isExec);
+            map.put("status", isExec ? "EXECUTED" : "PENDING");
+            list.add(map);
+        }
+        return list;
     }
 }
 

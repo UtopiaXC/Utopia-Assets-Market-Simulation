@@ -8,6 +8,7 @@ export interface SimulationFile {
     path: string
     lastModified: number
     size: number
+    days?: number
 }
 
 export const useSimulationStore = defineStore('simulation', () => {
@@ -79,6 +80,16 @@ export const useSimulationStore = defineStore('simulation', () => {
         totalDays.value = 100
     }
 
+    async function switchToSimulation(fileName: string) {
+        await fetchSimulations()
+        // If fileName doesn't end with .db, append it or find matching name
+        let target = fileName
+        if (!target.endsWith('.db')) {
+            target = target + '.db'
+        }
+        await selectSimulation(target)
+    }
+
     return {
         // State
         simulations,
@@ -93,6 +104,7 @@ export const useSimulationStore = defineStore('simulation', () => {
         // Actions
         fetchSimulations,
         selectSimulation,
+        switchToSimulation,
         setDay,
         disconnect
     }

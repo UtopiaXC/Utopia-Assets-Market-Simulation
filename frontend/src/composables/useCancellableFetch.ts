@@ -27,8 +27,12 @@ export function useCancellableFetch<T>() {
       data.value = result
       return result
     } catch (e: any) {
-      if (axios.isCancel(e)) {
-        console.log('Request cancelled')
+      if (
+        axios.isCancel(e) ||
+        e.name === 'CanceledError' ||
+        e.name === 'AbortError' ||
+        e.code === 'ERR_CANCELED'
+      ) {
         return null // Ignore cancelled requests
       }
       error.value = e.response?.data?.error || e.message || 'Fetch failed'

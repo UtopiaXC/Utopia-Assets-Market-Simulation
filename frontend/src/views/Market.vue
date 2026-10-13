@@ -24,6 +24,7 @@ import {
 import { useSimulationStore } from '@/stores/simulation'
 import { marketApi } from '@/services/api'
 import { useCancellableFetch } from '@/composables/useCancellableFetch'
+import { formatAxisNumber } from '@/utils/format'
 
 // Register ECharts components
 use([
@@ -63,16 +64,16 @@ const klineOption = computed(() => {
       textStyle: { color: '#888' }
     },
     grid: [
-      { left: '5%', right: '5%', top: '10%', height: '55%' },
-      { left: '5%', right: '5%', top: '72%', height: '18%' }
+      { left: '12px', right: '16px', top: '10%', height: '55%', containLabel: true },
+      { left: '12px', right: '16px', top: '72%', height: '18%', containLabel: true }
     ],
     xAxis: [
       { type: 'category', data: days, boundaryGap: true, gridIndex: 0 },
       { type: 'category', data: days, boundaryGap: true, gridIndex: 1 }
     ],
     yAxis: [
-      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#333' } } },
-      { scale: true, gridIndex: 1, splitLine: { lineStyle: { color: '#333' } } }
+      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#333' } }, axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' } },
+      { scale: true, gridIndex: 1, splitLine: { lineStyle: { color: '#333' } }, axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' } }
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },

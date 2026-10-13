@@ -5,6 +5,7 @@ import java.util.*;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.SocialNetwork;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.ValuationService;
 import sim.engine.SimState;
@@ -29,20 +30,25 @@ public class NoiseTrader extends BaseTrader {
     private boolean hasSecuredPrincipal = false;
 
     public NoiseTrader(int id, double initialCash, double riskTolerance, int maxStocks) {
+        this(id, initialCash, riskTolerance, maxStocks, null);
+    }
+
+    public NoiseTrader(int id, double initialCash, double riskTolerance, int maxStocks, SimulationConfig cfg) {
         super(id, "NOISE", initialCash, riskTolerance, maxStocks,
                 Config.AGENT_NOISE_MAX_STOCKS_MIN,
                 Config.AGENT_NOISE_MAX_STOCKS_MAX,
                 Config.AGENT_NOISE_TRADE_INTERVAL_MIN_DAYS,
                 Config.AGENT_NOISE_TRADE_INTERVAL_MAX_DAYS);
 
-        this.wFundBase = Config.VALUATION_FUND_WEIGHT_NOISE;
-        this.wSocialBase = Config.VALUATION_SOCIAL_WEIGHT_NOISE;
-        this.wTrendBase = Config.VALUATION_TREND_WEIGHT_NOISE;
-        this.noiseStdDev = Config.VALUATION_NOISE_STDDEV_NOISE;
-        this.lookbackDays = Config.VALUATION_LOOKBACK_DAYS_NOISE;
+        this.wFundBase = (cfg != null) ? cfg.getValFundWeightNoise() : Config.VALUATION_FUND_WEIGHT_NOISE;
+        this.wSocialBase = (cfg != null) ? cfg.getValSocialWeightNoise() : Config.VALUATION_SOCIAL_WEIGHT_NOISE;
+        this.wTrendBase = (cfg != null) ? cfg.getValTrendWeightNoise() : Config.VALUATION_TREND_WEIGHT_NOISE;
+        this.noiseStdDev = (cfg != null) ? cfg.getValNoiseStdDevNoise() : Config.VALUATION_NOISE_STDDEV_NOISE;
+        this.lookbackDays = (cfg != null) ? cfg.getValLookbackDaysNoise() : Config.VALUATION_LOOKBACK_DAYS_NOISE;
 
         // 噪声交易者社交敏感度更高
-        this.socialSensitivity = Config.SOCIAL_SENSITIVITY_BETA * 1.5;
+        double baseBeta = (cfg != null) ? cfg.getSocialSensitivityBeta() : Config.SOCIAL_SENSITIVITY_BETA;
+        this.socialSensitivity = baseBeta * 1.5;
     }
 
     @Override
@@ -88,7 +94,7 @@ public class NoiseTrader extends BaseTrader {
         if (model.random.nextDouble() < Config.LEVERAGE_REQUEST_PROB * 2 && portfolio.borrowedCash <= 0) {
             double maxLev = model.market.policySlot.getMaxLeverageRatio();
             if (maxLev > 1.0 && model.leverageService != null) {
-                model.leverageService.requestLeverage(this, maxLev);
+                model.leverageService.requestLeverage(this, maxLev, model.market);
             }
         }
 
@@ -132,6 +138,7 @@ public class NoiseTrader extends BaseTrader {
         ValuationService valuation = model.valuation;
         SocialNetwork socialNet = model.socialNetwork;
 
+        List<SocialNetwork.NeighborEntry> entries = (socialNet != null) ? socialNet.getNeighborEntries(this) : Collections.emptyList();
         List<BaseTrader> neighbors = (socialNet != null) ? socialNet.getNeighbors(this) : Collections.emptyList();
         double[] similarities = (socialNet != null) ? socialNet.getSimilarities(this) : new double[0];
 
@@ -148,23 +155,8 @@ public class NoiseTrader extends BaseTrader {
                     wFundBase, wSocialBase, wTrendBase,
                     noiseStdDev, lookbackDays, noise);
 
-            setBelief(stock, result.belief);            // 生成最新社交影响 JSON
-            StringBuilder json = new StringBuilder("[");
-            double simSum = 0;
-            for (double s : similarities) simSum += s;
-            for (int j = 0; j < neighbors.size(); j++) {
-                BaseTrader n = neighbors.get(j);
-                double sim = j < similarities.length ? similarities[j] : 0;
-                double weight = (simSum > 0) ? (sim / simSum) : 0;
-                json.append(String.format(
-                        Locale.US,
-                        "{\"neighborId\":%d,\"similarity\":%.4f,\"weight\":%.4f,\"belief\":%.4f}%s",
-                        n.traderId, sim, weight, n.getBelief(stock),
-                        (j < neighbors.size() - 1) ? "," : ""
-                ));
-            }
-            json.append("]");
-            setLastInfluenceJson(json.toString());
+            setBelief(stock, result.belief);
+            setLastInfluenceJson(buildInfluenceJson(stock, entries));
 
             double score = result.belief / stock.currentPrice;
             allStockScores.add(new StockScore(stock, score));

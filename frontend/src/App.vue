@@ -22,7 +22,7 @@ import {
   NTooltip,
   NMessageProvider,
   NDialogProvider,
-  GlobalThemeOverrides
+  type GlobalThemeOverrides
 } from 'naive-ui'
 import {
   HomeOutline,

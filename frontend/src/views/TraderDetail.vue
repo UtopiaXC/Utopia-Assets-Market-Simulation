@@ -32,6 +32,7 @@ import {
 import { useSimulationStore } from '@/stores/simulation'
 import { traderApi } from '@/services/api'
 import { useCancellableFetch } from '@/composables/useCancellableFetch'
+import { formatAxisNumber } from '@/utils/format'
 
 use([
   CanvasRenderer, 
@@ -73,9 +74,13 @@ const assetOption = computed(() => {
       data: ['Savings', 'Stocks', 'Cash', 'Frozen'], 
       textStyle: { color: '#888' } 
     },
-    grid: { left: '5%', right: '5%', top: '15%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '15%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: data.map((d: any) => d.day) },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      type: 'value', 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     series: [
       { name: 'Savings', type: 'line', stack: 'total', areaStyle: {},
         data: data.map((d: any) => d.privateSavings), itemStyle: { color: '#4CAF50' } },
@@ -96,7 +101,7 @@ const riskOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
-    grid: { left: '5%', right: '5%', top: '10%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '10%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: data.map((d: any) => d.day) },
     yAxis: { type: 'value', min: 0, max: 1, splitLine: { lineStyle: { color: '#333' } } },
     series: [{ type: 'line', data: data.map((d: any) => d.riskTolerance), itemStyle: { color: '#E91E63' } }]
@@ -277,12 +282,26 @@ async function fetchData() {
   }
 }
 
-watch(() => [store.currentSimulation, store.currentDay, traderId.value], () => {
-  if (store.currentSimulation && traderId.value !== undefined) fetchData()
-}, { immediate: true })
+async function navigateToTrader(targetTraderId: number) {
+  showInfluenceModal.value = false
+  await router.push({ name: 'traderDetail', params: { traderId: targetTraderId } })
+  await fetchData()
+}
+
+watch(
+  [() => store.currentSimulation, () => store.currentDay, () => route.params.traderId],
+  () => {
+    if (store.currentSimulation && route.params.traderId !== undefined) {
+      fetchData()
+    }
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
-  if (store.currentSimulation && traderId.value !== undefined) fetchData()
+  if (store.currentSimulation && route.params.traderId !== undefined) {
+    fetchData()
+  }
 })
 </script>
 
@@ -376,25 +395,23 @@ onMounted(() => {
             </NCard>
           </NGridItem>
           <NGridItem>
-            <NCard title="Neighbor Details" size="small">
+            <NCard title="Influencing Agents & Factors" size="small">
               <NScrollbar style="max-height: 380px">
                 <NDataTable
                   :columns="[
-                    { title: 'Neighbor', key: 'neighborId', width: 80 },
-                    { title: 'Similarity', key: 'similarity', width: 80,
+                    { title: 'Influencing Agent', key: 'neighborId', width: 140,
+                      render: (row: any) => h('span', { style: 'font-weight: 600;' }, `Agent ${row.neighborId}`) },
+                    { title: 'Similarity', key: 'similarity', width: 85,
                       render: (row: any) => (row.similarity || 0).toFixed(3) },
-                    { title: 'Weight', key: 'weight', width: 70,
+                    { title: 'Weight', key: 'weight', width: 85,
                       render: (row: any) => ((row.weight || 0) * 100).toFixed(1) + '%' },
-                    { title: 'Belief', key: 'belief', width: 80,
+                    { title: 'Belief', key: 'belief', width: 85,
                       render: (row: any) => (row.belief || 0).toFixed(2) },
-                    { title: '', key: 'action', width: 40,
+                    { title: 'Action', key: 'action', width: 80,
                       render: (row: any) => h(NButton, {
-                        size: 'tiny', text: true, type: 'info',
-                        onClick: () => {
-                          showInfluenceModal.value = false
-                          router.push({ name: 'traderDetail', params: { traderId: row.neighborId } })
-                        }
-                      }, { default: () => '→' })
+                        size: 'tiny', type: 'primary', secondary: true,
+                        onClick: () => navigateToTrader(row.neighborId)
+                      }, { default: () => 'Inspect' })
                     }
                   ]"
                   :data="selectedInfluenceData" :bordered="false" size="small" />

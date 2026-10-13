@@ -129,11 +129,35 @@ public final class Config {
     public static final int VALUATION_LOOKBACK_DAYS_NOISE = 5;
 
     // ============================================================
-    // 社交网络参数 / Social Network Config (Slides Page 8)
+    // 社交网络参数 / Social Network Config
     // ============================================================
     public static final int SOCIAL_TOP_K_NEIGHBORS = 5;
     public static final double SOCIAL_SENSITIVITY_BETA = 0.3;
     public static final int SOCIAL_NETWORK_REBUILD_INTERVAL = 20; // days
+
+    // 分层拓扑参数 / Hierarchical Topology Config
+    public static final int SOCIAL_INST_NEIGHBORS_COUNT = 3;      // 散户关注的机构 KOL 数量 (|H_i|)
+    public static final int SOCIAL_PEER_NEIGHBORS_COUNT = 3;      // 散户关注的同伴数量 (|P_i|)
+    public static final double SOCIAL_INST_INFLUENCE_RATIO = 0.70; // 机构观点占社会信号的比例 (ρ)
+
+    // 动态信誉与权重参数 / Reputation & Softmax Config
+    public static final double SOCIAL_SOFTMAX_TEMPERATURE = 0.5;   // Softmax 温度参数 (τ)
+    public static final double SOCIAL_MIN_WEIGHT_FLOOR = 0.20;     // 机构基础保底关注度比例 (η)
+    public static final double SOCIAL_ALPHA_EMA_LAMBDA = 0.95;     // 超额收益均值 EMA 平滑系数 (λ_m)
+    public static final double SOCIAL_VARIANCE_EMA_LAMBDA = 0.95;  // 超额收益方差 EMA 平滑系数 (λ_v)
+    public static final int SOCIAL_REPUTATION_WARMUP_DAYS = 10;    // 样本置信度预热天数
+    public static final double SOCIAL_REPUTATION_SCALE_KAPPA = 1.0; // 风险调整收益缩放因子 (κ)
+
+    // ============================================================
+    // 扩展政策参数 / Extended Policy Slot Config
+    // ============================================================
+    public static final double POLICY_BENCHMARK_INTEREST_RATE = 0.03;      // 基准年利率 (3%)
+    public static final double POLICY_REQUIRED_RESERVE_RATIO = 0.10;       // 存款准备金率 (10%)
+    public static final double POLICY_STAMP_DUTY_RATE = 0.001;             // 股票交易印花税 (0.1% 卖方)
+    public static final double POLICY_CAPITAL_GAINS_TAX_RATE = 0.0;        // 资本利得税 (0%)
+    public static final double POLICY_DIVIDEND_TAX_RATE = 0.10;            // 股息红利税 (10%)
+    public static final int POLICY_EARNINGS_DISCLOSURE_DAYS = 60;          // 财报披露周期 (60天/季度)
+    public static final double POLICY_OPINION_CENSORSHIP_DAMPING = 0.0;    // 社交网络舆论管制阻尼系数 (0 = 无管制, 1 = 完全阻断)
 
     // ============================================================
     // 杠杆/配资参数 / Leverage Config

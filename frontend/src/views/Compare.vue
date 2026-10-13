@@ -22,6 +22,7 @@ import {
 import { useSimulationStore } from '@/stores/simulation'
 import { marketApi, macroApi } from '@/services/api'
 import { useCancellableFetch } from '@/composables/useCancellableFetch'
+import { formatAxisNumber } from '@/utils/format'
 
 // Register ECharts components
 use([
@@ -54,9 +55,16 @@ function getBaseChartConfig(title: string) {
     backgroundColor: 'transparent',
     title: { text: title, textStyle: { color: '#888' } },
     tooltip: { trigger: 'axis' },
-    grid: { left: '8%', right: '5%', top: '18%', bottom: '12%' },
+    grid: { left: '12px', right: '16px', top: '18%', bottom: '12%', containLabel: true },
     xAxis: { type: 'category' as const, axisLabel: { color: '#888' } },
-    yAxis: { type: 'value' as const, splitLine: { lineStyle: { color: '#333' } }, axisLabel: { color: '#888' } }
+    yAxis: { 
+      type: 'value' as const, 
+      splitLine: { lineStyle: { color: '#333' } }, 
+      axisLabel: { 
+        color: '#888',
+        formatter: (v: number) => formatAxisNumber(v)
+      } 
+    }
   }
 }
 
@@ -264,11 +272,27 @@ const finalStatsOption = computed(() => {
     title: { text: 'Final Statistics Comparison', textStyle: { color: '#888' } },
     tooltip: { trigger: 'axis' },
     legend: { data: ['Final Index', 'Final Agents', 'Final Market Cap (B)'], textStyle: { color: '#888' } },
-    grid: { left: '8%', right: '5%', top: '18%', bottom: '15%' },
+    grid: { left: '12px', right: '16px', top: '18%', bottom: '15%', containLabel: true },
     xAxis: { type: 'category', data: simNames, axisLabel: { color: '#888', rotate: 15 } },
     yAxis: [
-      { type: 'value', name: 'Index / Agents', splitLine: { lineStyle: { color: '#333' } }, axisLabel: { color: '#888' } },
-      { type: 'value', name: 'Market Cap (B)', splitLine: { show: false }, axisLabel: { color: '#888' } }
+      { 
+        type: 'value', 
+        name: 'Index / Agents', 
+        splitLine: { lineStyle: { color: '#333' } }, 
+        axisLabel: { 
+          color: '#888',
+          formatter: (v: number) => formatAxisNumber(v)
+        } 
+      },
+      { 
+        type: 'value', 
+        name: 'Market Cap (B)', 
+        splitLine: { show: false }, 
+        axisLabel: { 
+          color: '#888',
+          formatter: (v: number) => formatAxisNumber(v)
+        } 
+      }
     ],
     series: [
       { name: 'Final Index', type: 'bar', data: finalIndex, itemStyle: { color: '#2196F3' } },
@@ -337,7 +361,7 @@ async function loadComparison() {
     </template>
     
     <template v-else>
-      <NSpin :show="loading">
+      <NSpin :show="loading" size="large" description="Loading comparison data..." style="min-height: 400px">
         <NGrid :cols="2" :x-gap="16" :y-gap="16">
           <!-- Market Index -->
           <NGridItem>

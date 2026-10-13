@@ -194,20 +194,22 @@ public class SimulationSession {
     public SessionStatus toStatus() {
         return new SessionStatus(
                 sessionId,
+                config != null ? config.getSimulationName() : null,
                 state.get().name(),
                 currentDay,
-                config.getSimulationDays(),
+                config != null ? config.getSimulationDays() : 0,
                 getProgress(),
                 activeAgents,
                 marketIndex,
                 speedMultiplier,
                 lastError,
-                (int) (currentStep % config.getStepsPerDay()),
-                config.getStepsPerDay());
+                (config != null && config.getStepsPerDay() > 0) ? (int) (currentStep % config.getStepsPerDay()) : 0,
+                config != null ? config.getStepsPerDay() : 0);
     }
 
     public record SessionStatus(
             String sessionId,
+            String simulationName,
             String state,
             int currentDay,
             int totalDays,

@@ -18,6 +18,7 @@ import {
 import { useSimulationStore } from '@/stores/simulation'
 import { sectorApi } from '@/services/api'
 import { useCancellableFetch } from '@/composables/useCancellableFetch'
+import { formatAxisNumber } from '@/utils/format'
 
 // Register ECharts components
 use([
@@ -57,9 +58,13 @@ const marketCapOption = computed(() => {
       type: 'scroll',
       bottom: 0
     },
-    grid: { left: '5%', right: '5%', top: '10%', bottom: '15%' },
+    grid: { left: '12px', right: '16px', top: '10%', bottom: '15%', containLabel: true },
     xAxis: { type: 'category', data: days },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      type: 'value', 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     series: sectors.map((sector, idx) => ({
       name: sector,
       type: 'line',
@@ -90,9 +95,13 @@ const peOption = computed(() => {
       type: 'scroll',
       bottom: 0
     },
-    grid: { left: '5%', right: '5%', top: '10%', bottom: '15%' },
+    grid: { left: '12px', right: '16px', top: '10%', bottom: '15%', containLabel: true },
     xAxis: { type: 'category', data: days },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      type: 'value', 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     series: sectors.map((sector, idx) => ({
       name: sector,
       type: 'line',
@@ -107,7 +116,9 @@ const peOption = computed(() => {
 
 async function fetchData() {
   if (!store.currentSimulation) return
-  await fetchSectors((signal) => sectorApi.getStats(store.currentSimulation!, signal))
+  try {
+    await fetchSectors((signal) => sectorApi.getStats(store.currentSimulation!, signal))
+  } catch (e) {}
 }
 
 // Watch for changes
@@ -135,7 +146,7 @@ onMounted(() => {
     </template>
     
     <template v-else>
-      <NSpin :show="loading">
+      <NSpin :show="loading" size="large" description="Loading sector analysis data..." style="min-height: 420px">
         <NGrid :cols="2" :x-gap="16" :y-gap="16">
           <NGridItem>
             <NCard>

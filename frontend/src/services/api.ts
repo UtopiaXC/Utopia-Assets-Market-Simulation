@@ -129,6 +129,7 @@ export const controlApi = {
     pause: () => api.post('/control/pause'),
     resume: () => api.post('/control/resume'),
     stop: () => api.post('/control/stop'),
+    reset: () => api.post('/control/reset'),
 
     // Speed
     setSpeed: (multiplier: number) => api.post('/control/speed', null, { params: { multiplier } }),
@@ -140,9 +141,19 @@ export const controlApi = {
     // Policy Slot
     getCurrentPolicy: (signal?: AbortSignal) => api.get('/control/policy', { signal }),
 
-    // Policy Event Injection
+    // Policy Event & Market Shock Injection & Query
+    getEvents: (signal?: AbortSignal) => api.get('/control/events', { signal }),
     injectPolicyEvent: (day: number, policyType: string, value: number, description?: string) =>
-        api.post('/control/policy/inject', { day, policyType, value, description })
+        api.post('/control/policy/inject', { day, policyType, value, description }),
+    injectMarketShock: (params: {
+        day: number,
+        shockType: string,
+        magnitude: number,
+        halfLifeDays?: number,
+        targetSector?: string,
+        targetTraderId?: number,
+        description?: string
+    }) => api.post('/control/shock/inject', params)
 }
 
 export default api

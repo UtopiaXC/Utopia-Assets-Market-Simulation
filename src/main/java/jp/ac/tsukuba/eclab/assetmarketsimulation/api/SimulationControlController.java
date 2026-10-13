@@ -4,6 +4,8 @@ import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationService;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationSession;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicyEvent;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.MarketShockEvent;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -83,6 +85,15 @@ public class SimulationControlController {
     }
 
     /**
+     * Reset simulation session
+     * POST /api/control/reset
+     */
+    @PostMapping("/reset")
+    public ResponseEntity<SimulationSession.SessionStatus> reset() {
+        return ResponseEntity.ok(simulationService.reset());
+    }
+
+    /**
      * Set simulation speed
      * POST /api/control/speed?multiplier=2.0
      */
@@ -138,6 +149,15 @@ public class SimulationControlController {
 
 
     /**
+     * GET /api/control/events
+     * List all scheduled events with execution status
+     */
+    @GetMapping("/events")
+    public ResponseEntity<List<Map<String, Object>>> getScheduledEvents() {
+        return ResponseEntity.ok(simulationService.getScheduledEvents());
+    }
+
+    /**
      * Inject a scheduled policy change event.
      * The event will execute at the specified day during simulation.
      * POST /api/control/policy/inject
@@ -154,17 +174,63 @@ public class SimulationControlController {
             String description = (String) params.getOrDefault("description",
                     "Scheduled policy change: " + policyType + " -> " + value + " on day " + day);
 
-            simulationService.injectPolicyEvent(day, policyType, value, description);
+            PolicyEvent event = simulationService.injectPolicyEvent(day, policyType, value, description);
             return ResponseEntity.ok(Map.of(
+                    "id", event.getId(),
                     "day", day,
                     "policyType", policyType,
                     "value", value,
-                    "injected", true
+                    "injected", true,
+                    "status", event.isExecuted() ? "EXECUTED" : "PENDING"
             ));
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid policy type: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Inject a scheduled market shock event.
+     * POST /api/control/shock/inject
+     *
+     * Body: {
+     *   "day": 80,
+     *   "shockType": "SENTIMENT_CRASH",
+     *   "magnitude": 0.25,
+     *   "halfLifeDays": 5,
+     *   "targetSector": "ALL",
+     *   "targetTraderId": -1,
+     *   "description": "..."
+     * }
+     */
+    @PostMapping("/shock/inject")
+    public ResponseEntity<?> injectMarketShock(@RequestBody Map<String, Object> params) {
+        try {
+            int day = ((Number) params.get("day")).intValue();
+            String shockType = (String) params.get("shockType");
+            double magnitude = ((Number) params.get("magnitude")).doubleValue();
+            int halfLifeDays = params.containsKey("halfLifeDays") ? ((Number) params.get("halfLifeDays")).intValue() : 5;
+            String targetSector = (String) params.getOrDefault("targetSector", "ALL");
+            int targetTraderId = params.containsKey("targetTraderId") ? ((Number) params.get("targetTraderId")).intValue() : -1;
+            String description = (String) params.getOrDefault("description",
+                    "Market shock: " + shockType + " (magnitude=" + magnitude + ", target=" + targetSector + ") on day " + day);
+
+            MarketShockEvent event = simulationService.injectMarketShock(day, shockType, magnitude, halfLifeDays, targetSector, targetTraderId, description);
+            return ResponseEntity.ok(Map.of(
+                    "id", event.getId(),
+                    "day", day,
+                    "shockType", shockType,
+                    "magnitude", magnitude,
+                    "halfLifeDays", halfLifeDays,
+                    "targetSector", targetSector,
+                    "injected", true,
+                    "status", event.isExecuted() ? "EXECUTED" : "PENDING"
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid shock parameter: " + e.getMessage()));
         }
     }
 }

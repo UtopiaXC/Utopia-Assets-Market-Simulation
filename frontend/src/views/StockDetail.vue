@@ -27,6 +27,7 @@ import {
 import { useSimulationStore } from '@/stores/simulation'
 import { stockApi } from '@/services/api'
 import { useCancellableFetch } from '@/composables/useCancellableFetch'
+import { formatAxisNumber } from '@/utils/format'
 
 // Register ECharts components
 use([
@@ -60,9 +61,13 @@ const klineOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-    grid: { left: '5%', right: '5%', top: '10%', bottom: '15%' },
+    grid: { left: '12px', right: '16px', top: '10%', bottom: '15%', containLabel: true },
     xAxis: { type: 'category', data: days },
-    yAxis: { scale: true, splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      scale: true, 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     dataZoom: [
       { type: 'inside', start: 0, end: 100 },
       { type: 'slider', bottom: 0 }
@@ -89,11 +94,21 @@ const valuationOption = computed(() => {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
     legend: { data: ['PE (TTM)', 'PB Ratio'], textStyle: { color: '#888' } },
-    grid: { left: '5%', right: '10%', top: '15%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '15%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: data.map((d: any) => d.day) },
     yAxis: [
-      { type: 'value', name: 'PE', splitLine: { lineStyle: { color: '#333' } } },
-      { type: 'value', name: 'PB', position: 'right' }
+      { 
+        type: 'value', 
+        name: 'PE', 
+        splitLine: { lineStyle: { color: '#333' } },
+        axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+      },
+      { 
+        type: 'value', 
+        name: 'PB', 
+        position: 'right',
+        axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+      }
     ],
     series: [
       {
@@ -123,11 +138,21 @@ const liquidityOption = computed(() => {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
     legend: { data: ['Volume', 'Turnover Rate'], textStyle: { color: '#888' } },
-    grid: { left: '5%', right: '10%', top: '15%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '15%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: data.map((d: any) => d.day) },
     yAxis: [
-      { type: 'value', name: 'Volume', splitLine: { lineStyle: { color: '#333' } } },
-      { type: 'value', name: 'Rate', position: 'right' }
+      { 
+        type: 'value', 
+        name: 'Volume', 
+        splitLine: { lineStyle: { color: '#333' } },
+        axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+      },
+      { 
+        type: 'value', 
+        name: 'Rate', 
+        position: 'right',
+        axisLabel: { formatter: (v: any) => (Number(v) * 100).toFixed(0) + '%', color: '#888' }
+      }
     ],
     series: [
       {
@@ -155,9 +180,13 @@ const mcapOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
-    grid: { left: '5%', right: '5%', top: '10%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '10%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: data.map((d: any) => d.day) },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      type: 'value', 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     series: [{
       type: 'line',
       data: data.map((d: any) => d.totalMarketCap),

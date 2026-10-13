@@ -16,6 +16,7 @@ import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.data.SimulationDataLogger;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicySlot;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.ShockManager;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader;
 
 public class Market implements Steppable {
@@ -76,6 +77,9 @@ public class Market implements Steppable {
     // 政策插槽
     public PolicySlot policySlot;
 
+    // 市场冲击管理器
+    public ShockManager shockManager = new ShockManager();
+
     // 熔断状态
     private boolean circuitBreakerTriggered = false;
 
@@ -132,6 +136,9 @@ public class Market implements Steppable {
         this.indexLow = INDEX_BASE;
 
         this.marketIndexHistory.add(INDEX_BASE);
+        if (this.shockManager != null) {
+            this.shockManager.clear();
+        }
     }
 
     public int getCurrentDay() {
@@ -247,10 +254,11 @@ public class Market implements Steppable {
             pruneExpiredOrders();
         }
 
-        if (currentStep > 0 && currentStep % STEPS_PER_QUARTER == 0) {
-            System.out.println("--- Quarterly Earnings (Day " + getCurrentDay() + ") ---");
+        int disclosureDays = policySlot.getEarningsDisclosurePeriodDays();
+        long stepsPerPeriod = (long) Math.max(1, disclosureDays) * STEPS_PER_DAY;
+        if (currentStep > 0 && currentStep % stepsPerPeriod == 0) {
             for (int i = 0; i < stocksBag.size(); i++) {
-                ((Stock) stocksBag.get(i)).updateFundamentals(state);
+                ((Stock) stocksBag.get(i)).updateFundamentals(state, model);
             }
         }
 
@@ -284,7 +292,8 @@ public class Market implements Steppable {
                         continue;
                     }
 
-                    boolean sellSuccess = bestSell.trader.portfolio.reducePosition(stock, tradeQuantity, tradePrice);
+                    double costBasis = bestSell.trader.portfolio.reducePositionWithCost(stock, tradeQuantity, tradePrice);
+                    boolean sellSuccess = (costBasis >= 0);
 
                     if (sellSuccess) {
                         boolean buySuccess = bestBuy.trader.portfolio.addPosition(
@@ -297,6 +306,25 @@ public class Market implements Steppable {
                                 bestSell.trader.portfolio.cash = 0;
                             ob.buyOrders.poll();
                             continue;
+                        }
+
+                        // 1. 印花税 (Stamp Duty): 扣除卖方成交额的 stampDutyRate，闭环归集到 socialWealthPool
+                        double stampDutyRate = policySlot.getStampDutyRate();
+                        if (stampDutyRate > 0) {
+                            double stampTax = tradeQuantity * tradePrice * stampDutyRate;
+                            bestSell.trader.portfolio.cash -= stampTax;
+                            if (bestSell.trader.portfolio.cash < 0) bestSell.trader.portfolio.cash = 0;
+                            if (model != null) model.socialWealthPool += stampTax;
+                        }
+
+                        // 2. 资本利得税 (Capital Gains Tax): 对卖方盈利部分征收，闭环归集到 socialWealthPool
+                        double cgtRate = policySlot.getCapitalGainsTaxRate();
+                        if (cgtRate > 0 && tradePrice > costBasis) {
+                            double gain = (tradePrice - costBasis) * tradeQuantity;
+                            double cgtTax = gain * cgtRate;
+                            bestSell.trader.portfolio.cash -= cgtTax;
+                            if (bestSell.trader.portfolio.cash < 0) bestSell.trader.portfolio.cash = 0;
+                            if (model != null) model.socialWealthPool += cgtTax;
                         }
                     } else {
                         ob.sellOrders.poll();

@@ -18,6 +18,7 @@ import {
 import { useSimulationStore } from '@/stores/simulation'
 import { macroApi } from '@/services/api'
 import { useCancellableFetch } from '@/composables/useCancellableFetch'
+import { formatAxisNumber } from '@/utils/format'
 
 // Register ECharts components
 use([
@@ -42,9 +43,13 @@ const populationOption = computed(() => {
     backgroundColor: 'transparent',
     title: { text: 'Active Agents', textStyle: { color: '#888' } },
     tooltip: { trigger: 'axis' },
-    grid: { left: '5%', right: '5%', top: '15%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '15%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: data.map((d: any) => d.day) },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      type: 'value', 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     series: [{
       type: 'line',
       data: data.map((d: any) => d.count),
@@ -67,9 +72,13 @@ const wealthOption = computed(() => {
       data: ['Social Pool', 'Savings', 'Market Liq'], 
       textStyle: { color: '#888' } 
     },
-    grid: { left: '5%', right: '5%', top: '18%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '18%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: data.map((d: any) => d.day) },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      type: 'value', 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     series: [
       {
         name: 'Social Pool',
@@ -114,9 +123,13 @@ const agentAssetsOption = computed(() => {
     title: { text: 'Total Assets by Agent Type', textStyle: { color: '#888' } },
     tooltip: { trigger: 'axis' },
     legend: { data: types, textStyle: { color: '#888' } },
-    grid: { left: '5%', right: '5%', top: '18%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '18%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: days },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#333' } } },
+    yAxis: { 
+      type: 'value', 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => formatAxisNumber(v), color: '#888' }
+    },
     series: types.map((type, idx) => ({
       name: type,
       type: 'line',
@@ -144,13 +157,14 @@ const agentRiskOption = computed(() => {
     title: { text: 'Avg Risk Tolerance', textStyle: { color: '#888' } },
     tooltip: { trigger: 'axis' },
     legend: { data: types, textStyle: { color: '#888' } },
-    grid: { left: '5%', right: '5%', top: '18%', bottom: '10%' },
+    grid: { left: '12px', right: '16px', top: '18%', bottom: '10%', containLabel: true },
     xAxis: { type: 'category', data: days },
     yAxis: { 
       type: 'value', 
       min: 0, 
       max: 1,
-      splitLine: { lineStyle: { color: '#333' } } 
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLabel: { formatter: (v: any) => (Number(v)).toFixed(1), color: '#888' }
     },
     series: types.map((type, idx) => ({
       name: type,
@@ -166,7 +180,9 @@ const agentRiskOption = computed(() => {
 
 async function fetchData() {
   if (!store.currentSimulation) return
-  await fetchMacro((signal) => macroApi.getStats(store.currentSimulation!, signal))
+  try {
+    await fetchMacro((signal) => macroApi.getStats(store.currentSimulation!, signal))
+  } catch (e) {}
 }
 
 // Watch for changes
@@ -194,7 +210,7 @@ onMounted(() => {
     </template>
     
     <template v-else>
-      <NSpin :show="loading">
+      <NSpin :show="loading" size="large" description="Loading macro statistics..." style="min-height: 420px">
         <NGrid :cols="2" :x-gap="16" :y-gap="16">
           <NGridItem>
             <NCard>

@@ -1,6 +1,7 @@
 package jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model;
 
 import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Market;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.scenario.PolicySlot;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Sector;
@@ -34,16 +35,31 @@ public class ValuationService {
     private final Map<Sector, Double> sectorBonus;
 
     public ValuationService() {
-        this.pbMultiplier = Config.VALUATION_PB_MULTIPLIER;
-        this.peMultiplier = Config.VALUATION_PE_MULTIPLIER;
+        this(null);
+    }
 
-        this.sectorBonus = new HashMap<>();
-        this.sectorBonus.put(Sector.TECH, Config.VALUATION_SECTOR_TECH);
-        this.sectorBonus.put(Sector.HEALTHCARE, Config.VALUATION_SECTOR_HEALTHCARE);
-        this.sectorBonus.put(Sector.CONSUMER, Config.VALUATION_SECTOR_CONSUMER);
-        this.sectorBonus.put(Sector.FINANCE, Config.VALUATION_SECTOR_FINANCE);
-        this.sectorBonus.put(Sector.INDUSTRY, Config.VALUATION_SECTOR_INDUSTRY);
-        this.sectorBonus.put(Sector.ENERGY, Config.VALUATION_SECTOR_ENERGY);
+    public ValuationService(SimulationConfig cfg) {
+        if (cfg != null) {
+            this.pbMultiplier = cfg.getPbMultiplier();
+            this.peMultiplier = cfg.getPeMultiplier();
+            this.sectorBonus = new HashMap<>();
+            this.sectorBonus.put(Sector.TECH, cfg.getSectorBonusTech());
+            this.sectorBonus.put(Sector.HEALTHCARE, cfg.getSectorBonusHealthcare());
+            this.sectorBonus.put(Sector.CONSUMER, cfg.getSectorBonusConsumer());
+            this.sectorBonus.put(Sector.FINANCE, cfg.getSectorBonusFinance());
+            this.sectorBonus.put(Sector.INDUSTRY, cfg.getSectorBonusIndustry());
+            this.sectorBonus.put(Sector.ENERGY, cfg.getSectorBonusEnergy());
+        } else {
+            this.pbMultiplier = Config.VALUATION_PB_MULTIPLIER;
+            this.peMultiplier = Config.VALUATION_PE_MULTIPLIER;
+            this.sectorBonus = new HashMap<>();
+            this.sectorBonus.put(Sector.TECH, Config.VALUATION_SECTOR_TECH);
+            this.sectorBonus.put(Sector.HEALTHCARE, Config.VALUATION_SECTOR_HEALTHCARE);
+            this.sectorBonus.put(Sector.CONSUMER, Config.VALUATION_SECTOR_CONSUMER);
+            this.sectorBonus.put(Sector.FINANCE, Config.VALUATION_SECTOR_FINANCE);
+            this.sectorBonus.put(Sector.INDUSTRY, Config.VALUATION_SECTOR_INDUSTRY);
+            this.sectorBonus.put(Sector.ENERGY, Config.VALUATION_SECTOR_ENERGY);
+        }
     }
 
     /**
@@ -71,7 +87,7 @@ public class ValuationService {
         PolicySlot policy = market.policySlot;
 
         // 1. 基本面估值 V_fund
-        double vFund = calculateFundamentalValue(stock);
+        double vFund = calculateFundamentalValue(stock, market);
 
         // 2. 社交估值 V_social
         double vSocial = calculateSocialValue(stock, neighbors, similarities);
@@ -91,9 +107,10 @@ public class ValuationService {
         // w'_fund = w_fund_base (基本面权重不变)
         double wFundPrime = wFundBase;
 
-        // w'_social = w_social_base × (1 + β × σ / Th_halt)
+        // w'_social = w_social_base × (1 + β × σ / Th_halt) × (1 - censorshipDamping)
         double socialBoost = (thHalt > 0) ? (beta * sigma / thHalt) : 0;
-        double wSocialPrime = wSocialBase * (1.0 + socialBoost);
+        double censorshipDamping = 1.0 - Math.min(1.0, Math.max(0.0, policy.getOpinionCensorshipDamping()));
+        double wSocialPrime = wSocialBase * (1.0 + socialBoost) * censorshipDamping;
 
         // w'_trend = w_trend_base × (1 + β × |R_t^τ| / (ΔP + ε))
         double trendBoost = (deltaP + epsilon > 0) ? (beta * Math.abs(priceReturn) / (deltaP + epsilon)) : 0;
@@ -107,6 +124,11 @@ public class ValuationService {
 
         // 5. 最终信念
         double belief = wFund * vFund + wSocial * vSocial + wTrend * vTrend;
+
+        // 市场情绪/信心冲击 (Sentiment Crash Shock)
+        if (market.shockManager != null) {
+            belief *= market.shockManager.getActiveSentimentMultiplier(market.getCurrentDay());
+        }
 
         // 加入噪声
         belief *= (1.0 + noise * noiseStdDev);
@@ -122,6 +144,10 @@ public class ValuationService {
      * V_fund = V_base × (1 + g) × sector_bonus
      */
     public double calculateFundamentalValue(Stock stock) {
+        return calculateFundamentalValue(stock, null);
+    }
+
+    public double calculateFundamentalValue(Stock stock, Market market) {
         double bps = stock.netAssetsPerShare;
         double eps = stock.eps;
 
@@ -129,7 +155,14 @@ public class ValuationService {
         double peValue = (eps > 0) ? eps * peMultiplier : 0;
 
         double baseValue = (peValue > 0) ? (pbValue + peValue) / 2.0 : pbValue;
-        double growthMultiplier = 1.0 + stock.earningsGrowth;
+
+        // 评级冲击扣减 (Rating Shock Penalty)
+        double growthPenalty = 0.0;
+        if (market != null && market.shockManager != null) {
+            growthPenalty = market.shockManager.getSectorGrowthPenalty(stock.sector, market.getCurrentDay());
+        }
+        double effectiveGrowth = Math.max(-0.90, stock.earningsGrowth - growthPenalty);
+        double growthMultiplier = 1.0 + effectiveGrowth;
         double sectorMult = sectorBonus.getOrDefault(stock.sector, 1.0);
 
         return baseValue * growthMultiplier * sectorMult;

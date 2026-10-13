@@ -5,6 +5,7 @@ import java.util.*;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.SocialNetwork;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.ValuationService;
 import sim.engine.SimState;
@@ -30,17 +31,21 @@ public class RetailTrader extends BaseTrader {
     private boolean hasSecuredPrincipal = false;
 
     public RetailTrader(int id, double initialCash, double riskTolerance, int maxStocks) {
+        this(id, initialCash, riskTolerance, maxStocks, null);
+    }
+
+    public RetailTrader(int id, double initialCash, double riskTolerance, int maxStocks, SimulationConfig cfg) {
         super(id, "RETAIL", initialCash, riskTolerance, maxStocks,
                 Config.AGENT_RETAIL_MAX_STOCKS_MIN,
                 Config.AGENT_RETAIL_MAX_STOCKS_MAX,
                 Config.AGENT_RETAIL_TRADE_INTERVAL_MIN_DAYS,
                 Config.AGENT_RETAIL_TRADE_INTERVAL_MAX_DAYS);
 
-        this.wFundBase = Config.VALUATION_FUND_WEIGHT_RETAIL;
-        this.wSocialBase = Config.VALUATION_SOCIAL_WEIGHT_RETAIL;
-        this.wTrendBase = Config.VALUATION_TREND_WEIGHT_RETAIL;
-        this.noiseStdDev = Config.VALUATION_NOISE_STDDEV_RETAIL;
-        this.lookbackDays = Config.VALUATION_LOOKBACK_DAYS_RETAIL;
+        this.wFundBase = (cfg != null) ? cfg.getValFundWeightRetail() : Config.VALUATION_FUND_WEIGHT_RETAIL;
+        this.wSocialBase = (cfg != null) ? cfg.getValSocialWeightRetail() : Config.VALUATION_SOCIAL_WEIGHT_RETAIL;
+        this.wTrendBase = (cfg != null) ? cfg.getValTrendWeightRetail() : Config.VALUATION_TREND_WEIGHT_RETAIL;
+        this.noiseStdDev = (cfg != null) ? cfg.getValNoiseStdDevRetail() : Config.VALUATION_NOISE_STDDEV_RETAIL;
+        this.lookbackDays = (cfg != null) ? cfg.getValLookbackDaysRetail() : Config.VALUATION_LOOKBACK_DAYS_RETAIL;
     }
 
     @Override
@@ -86,7 +91,7 @@ public class RetailTrader extends BaseTrader {
         if (model.random.nextDouble() < Config.LEVERAGE_REQUEST_PROB && portfolio.borrowedCash <= 0) {
             double maxLev = model.market.policySlot.getMaxLeverageRatio();
             if (maxLev > 1.0 && model.leverageService != null) {
-                model.leverageService.requestLeverage(this, maxLev);
+                model.leverageService.requestLeverage(this, maxLev, model.market);
             }
         }
 
@@ -99,6 +104,7 @@ public class RetailTrader extends BaseTrader {
         ValuationService valuation = model.valuation;
         SocialNetwork socialNet = model.socialNetwork;
 
+        List<SocialNetwork.NeighborEntry> entries = (socialNet != null) ? socialNet.getNeighborEntries(this) : Collections.emptyList();
         List<BaseTrader> neighbors = (socialNet != null) ? socialNet.getNeighbors(this) : Collections.emptyList();
         double[] similarities = (socialNet != null) ? socialNet.getSimilarities(this) : new double[0];
 
@@ -115,23 +121,8 @@ public class RetailTrader extends BaseTrader {
                     wFundBase, wSocialBase, wTrendBase,
                     noiseStdDev, lookbackDays, noise);
 
-            setBelief(stock, result.belief);            // 生成最新社交影响 JSON
-            StringBuilder json = new StringBuilder("[");
-            double simSum = 0;
-            for (double s : similarities) simSum += s;
-            for (int j = 0; j < neighbors.size(); j++) {
-                BaseTrader n = neighbors.get(j);
-                double sim = j < similarities.length ? similarities[j] : 0;
-                double weight = (simSum > 0) ? (sim / simSum) : 0;
-                json.append(String.format(
-                        Locale.US,
-                        "{\"neighborId\":%d,\"similarity\":%.4f,\"weight\":%.4f,\"belief\":%.4f}%s",
-                        n.traderId, sim, weight, n.getBelief(stock),
-                        (j < neighbors.size() - 1) ? "," : ""
-                ));
-            }
-            json.append("]");
-            setLastInfluenceJson(json.toString());
+            setBelief(stock, result.belief);
+            setLastInfluenceJson(buildInfluenceJson(stock, entries));
 
             double score = result.belief / stock.currentPrice;
             allStockScores.add(new StockScore(stock, score));

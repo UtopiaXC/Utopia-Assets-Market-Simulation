@@ -5,6 +5,7 @@ import java.util.*;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.control.SimulationConfig;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.SocialNetwork;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.ValuationService;
 import sim.engine.SimState;
@@ -28,17 +29,21 @@ public class InstitutionalTrader extends BaseTrader {
     private final int lookbackDays;
 
     public InstitutionalTrader(int id, double initialCash, double riskTolerance, int maxStocks) {
+        this(id, initialCash, riskTolerance, maxStocks, null);
+    }
+
+    public InstitutionalTrader(int id, double initialCash, double riskTolerance, int maxStocks, SimulationConfig cfg) {
         super(id, "INSTITUTIONAL", initialCash, riskTolerance, maxStocks,
                 Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN,
                 Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MAX,
                 Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MIN_DAYS,
                 Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MAX_DAYS);
 
-        this.wFundBase = Config.VALUATION_FUND_WEIGHT_INST;
-        this.wSocialBase = Config.VALUATION_SOCIAL_WEIGHT_INST;
-        this.wTrendBase = Config.VALUATION_TREND_WEIGHT_INST;
-        this.noiseStdDev = Config.VALUATION_NOISE_STDDEV_INST;
-        this.lookbackDays = Config.VALUATION_LOOKBACK_DAYS_INST;
+        this.wFundBase = (cfg != null) ? cfg.getValFundWeightInst() : Config.VALUATION_FUND_WEIGHT_INST;
+        this.wSocialBase = (cfg != null) ? cfg.getValSocialWeightInst() : Config.VALUATION_SOCIAL_WEIGHT_INST;
+        this.wTrendBase = (cfg != null) ? cfg.getValTrendWeightInst() : Config.VALUATION_TREND_WEIGHT_INST;
+        this.noiseStdDev = (cfg != null) ? cfg.getValNoiseStdDevInst() : Config.VALUATION_NOISE_STDDEV_INST;
+        this.lookbackDays = (cfg != null) ? cfg.getValLookbackDaysInst() : Config.VALUATION_LOOKBACK_DAYS_INST;
     }
 
     @Override
@@ -60,6 +65,7 @@ public class InstitutionalTrader extends BaseTrader {
         SocialNetwork socialNet = model.socialNetwork;
 
         // 获取社交网络邻居
+        List<SocialNetwork.NeighborEntry> entries = (socialNet != null) ? socialNet.getNeighborEntries(this) : Collections.emptyList();
         List<BaseTrader> neighbors = (socialNet != null) ? socialNet.getNeighbors(this) : Collections.emptyList();
         double[] similarities = (socialNet != null) ? socialNet.getSimilarities(this) : new double[0];
 
@@ -78,23 +84,8 @@ public class InstitutionalTrader extends BaseTrader {
                     noiseStdDev, lookbackDays, noise);
 
             // 更新信念
-            setBelief(stock, result.belief);            // 生成最新社交影响 JSON
-            StringBuilder json = new StringBuilder("[");
-            double simSum = 0;
-            for (double s : similarities) simSum += s;
-            for (int j = 0; j < neighbors.size(); j++) {
-                BaseTrader n = neighbors.get(j);
-                double sim = j < similarities.length ? similarities[j] : 0;
-                double weight = (simSum > 0) ? (sim / simSum) : 0;
-                json.append(String.format(
-                        Locale.US,
-                        "{\"neighborId\":%d,\"similarity\":%.4f,\"weight\":%.4f,\"belief\":%.4f}%s",
-                        n.traderId, sim, weight, n.getBelief(stock),
-                        (j < neighbors.size() - 1) ? "," : ""
-                ));
-            }
-            json.append("]");
-            setLastInfluenceJson(json.toString());
+            setBelief(stock, result.belief);
+            setLastInfluenceJson(buildInfluenceJson(stock, entries));
 
             // Score = 估值 / 现价
             double score = result.belief / stock.currentPrice;

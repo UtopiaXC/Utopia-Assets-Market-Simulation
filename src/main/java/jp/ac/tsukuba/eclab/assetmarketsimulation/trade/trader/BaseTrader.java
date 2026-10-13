@@ -4,10 +4,13 @@ import jp.ac.tsukuba.eclab.assetmarketsimulation.Config;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.market.Stock;
 import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.Portfolio;
+import jp.ac.tsukuba.eclab.assetmarketsimulation.trade.model.SocialNetwork;
 import sim.engine.SimState;
 import sim.engine.Steppable;
 
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public abstract class BaseTrader implements Steppable {
@@ -100,6 +103,115 @@ public abstract class BaseTrader implements Steppable {
 
     public void setLastInfluenceJson(String json) {
         this.lastInfluenceJson = json;
+    }
+
+    /**
+     * 生成格式化的社交影响 JSON 字符串 (兼容旧版前端字段与新版拓展)
+     */
+    public String buildInfluenceJson(Stock stock, List<SocialNetwork.NeighborEntry> entries) {
+        if (entries == null || entries.isEmpty()) return "[]";
+        StringBuilder json = new StringBuilder("[");
+        for (int j = 0; j < entries.size(); j++) {
+            SocialNetwork.NeighborEntry entry = entries.get(j);
+            json.append(String.format(
+                    Locale.US,
+                    "{\"neighborId\":%d,\"type\":\"%s\",\"similarity\":%.4f,\"reputation\":%.4f,\"weight\":%.4f,\"belief\":%.4f}%s",
+                    entry.neighbor.traderId,
+                    entry.isInstitutional ? "INSTITUTIONAL" : "PEER",
+                    entry.similarity,
+                    entry.reputation,
+                    entry.weight,
+                    entry.neighbor.getBelief(stock),
+                    (j < entries.size() - 1) ? "," : ""
+            ));
+        }
+        json.append("]");
+        return json.toString();
+    }
+
+    // 净资产与历史业绩追踪 (用于动态信誉评分)
+    private double lastDayNav = -1.0;
+    private double meanAlpha = 0.0;
+    private double varianceAlpha = 0.0;
+    private double reputationScore = 0.0; // R_{k,t} in [-1, 1]
+    private int activeDaysCount = 0;
+
+    /**
+     * 计算当前时刻的总净资产价值 (NAV)
+     * NAV = 净权益 (含股票市值、现金、冻结现金 - 借款) + 场外储蓄
+     */
+    public double calculateCurrentNav() {
+        return this.portfolio.getNetEquity() + this.privateSavings;
+    }
+
+    public double getReputationScore() {
+        return reputationScore;
+    }
+
+    public void setReputationScore(double score) {
+        this.reputationScore = score;
+    }
+
+    public double getLastDayNav() {
+        return lastDayNav;
+    }
+
+    public void setLastDayNav(double nav) {
+        this.lastDayNav = nav;
+    }
+
+    public int getActiveDaysCount() {
+        return activeDaysCount;
+    }
+
+    /**
+     * 收盘后更新每日超额收益与动态信誉 (在 T 日结束时执行，T+1 生效，杜绝前瞻偏差)
+     *
+     * @param marketReturn 当日市场基准收益率 r_{m,t}
+     */
+    public void updateDailyReputation(double marketReturn) {
+        if (!isActive) return;
+
+        double currentNav = calculateCurrentNav();
+
+        if (lastDayNav <= 0) {
+            lastDayNav = currentNav;
+            activeDaysCount = 1;
+            reputationScore = 0.0;
+            return;
+        }
+
+        // 1. 机构 NAV 收益率: r_{k,t} = (NAV_t - NAV_{t-1}) / NAV_{t-1}
+        double agentReturn = (currentNav - lastDayNav) / lastDayNav;
+        lastDayNav = currentNav;
+        activeDaysCount++;
+
+        // 2. 相对超额收益率: alpha_{k,t} = r_{k,t} - r_{m,t}
+        double alpha = agentReturn - marketReturn;
+
+        // 3. EMA 估计近期的超额收益均值与方差
+        double lambdaM = Config.SOCIAL_ALPHA_EMA_LAMBDA;
+        double lambdaV = Config.SOCIAL_VARIANCE_EMA_LAMBDA;
+
+        if (activeDaysCount <= 2) {
+            meanAlpha = alpha;
+            varianceAlpha = 0.0001;
+        } else {
+            double prevMean = meanAlpha;
+            meanAlpha = lambdaM * meanAlpha + (1.0 - lambdaM) * alpha;
+            varianceAlpha = lambdaV * varianceAlpha + (1.0 - lambdaV) * (alpha - prevMean) * (alpha - prevMean);
+        }
+
+        // 4. 计算样本置信度 c_{k,t} in [0, 1] (避免新成立机构产生极端波动)
+        double confidence = Math.min(1.0, (double) activeDaysCount / Config.SOCIAL_REPUTATION_WARMUP_DAYS);
+
+        // 5. 风险调整后的有界信誉得分: R_{k,t} = c_{k,t} * tanh(kappa * meanAlpha / (sqrt(varianceAlpha) + epsilon))
+        double epsilon = 1e-4;
+        double kappa = Config.SOCIAL_REPUTATION_SCALE_KAPPA;
+        double stdDev = Math.sqrt(Math.max(0, varianceAlpha));
+        double informationRatio = meanAlpha / (stdDev + epsilon);
+
+        this.reputationScore = confidence * Math.tanh(kappa * informationRatio);
     }
 
     /**

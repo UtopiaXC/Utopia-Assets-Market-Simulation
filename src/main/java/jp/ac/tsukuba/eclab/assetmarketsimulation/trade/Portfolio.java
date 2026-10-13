@@ -139,10 +139,18 @@ public class Portfolio {
     }
 
     public boolean reducePosition(Stock stock, double quantity, double price) {
+        return reducePositionWithCost(stock, quantity, price) >= 0;
+    }
+
+    /**
+     * 卖出持仓并返回被卖出股票的加权平均成本价 (用于资本利得税计算)，若持仓不足返回 -1.0
+     */
+    public double reducePositionWithCost(Stock stock, double quantity, double price) {
         Position p = positions.get(stock);
         if (p == null || p.availableQuantity < quantity) {
-            return false;
+            return -1.0;
         }
+        double costBasis = p.averageCostBasis;
         this.cash += quantity * price;
         p.totalQuantity -= quantity;
         p.availableQuantity -= quantity;
@@ -151,7 +159,7 @@ public class Portfolio {
         }
         stock.volumeThisDay += quantity;
         stock.turnoverThisDay += quantity * price;
-        return true;
+        return costBasis;
     }
 
     public double getTotalStockValue() {

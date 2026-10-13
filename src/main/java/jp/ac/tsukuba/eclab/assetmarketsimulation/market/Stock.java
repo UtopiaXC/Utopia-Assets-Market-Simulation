@@ -109,6 +109,10 @@ public class Stock {
     }
 
     public void updateFundamentals(SimState state) {
+        updateFundamentals(state, null);
+    }
+
+    public void updateFundamentals(SimState state, jp.ac.tsukuba.eclab.assetmarketsimulation.StockMarketSim model) {
         double noise = state.random.nextGaussian() * this.epsVolatility;
         double quarterlyEps = (this.eps / 4.0) * (1.0 + this.quarterlyGrowthRate + noise);
         this.latestQuarterlyEps = quarterlyEps;
@@ -116,6 +120,27 @@ public class Stock {
         // 更新每股净资产 (retained earnings)
         if (this.latestQuarterlyEps > 0) {
             this.netAssetsPerShare += this.latestQuarterlyEps * this.retainedEarningsRatio;
+
+            // 派发股息红利与扣除股息红利税 (Dividend & Dividend Tax)
+            if (model != null && model.market != null && model.traders != null) {
+                double dividendPerShare = this.latestQuarterlyEps * (1.0 - this.retainedEarningsRatio);
+                if (dividendPerShare > 0) {
+                    double divTaxRate = model.market.policySlot.getDividendTaxRate();
+                    for (int i = 0; i < model.traders.size(); i++) {
+                        Object obj = model.traders.get(i);
+                        if (obj instanceof jp.ac.tsukuba.eclab.assetmarketsimulation.trade.trader.BaseTrader bt && bt.isActive()) {
+                            double qty = bt.portfolio.getStockQuantity(this);
+                            if (qty > 0) {
+                                double grossDiv = qty * dividendPerShare;
+                                double divTax = grossDiv * divTaxRate;
+                                double netDiv = grossDiv - divTax;
+                                bt.portfolio.cash += netDiv;
+                                model.socialWealthPool += divTax;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

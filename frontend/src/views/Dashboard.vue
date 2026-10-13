@@ -137,16 +137,6 @@ onMounted(async () => {
         <NEmpty v-else description="No simulation results found in output directory" />
       </NSpin>
     </NCard>
-    
-    <!-- Quick Start Guide -->
-    <NCard title="Quick Start Guide">
-      <NSpace vertical>
-        <NText>1. Run a simulation using the Java StockMarketSim main class</NText>
-        <NText>2. Click "Refresh" to update the simulation list</NText>
-        <NText>3. Click "Load" on a simulation to connect and analyze</NText>
-        <NText>4. Use the sidebar to navigate between analysis views</NText>
-        <NText>5. Use the day slider in the header to explore different simulation days</NText>
-      </NSpace>
-    </NCard>
+
   </div>
 </template>
