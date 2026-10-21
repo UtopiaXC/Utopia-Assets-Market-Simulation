@@ -42,14 +42,16 @@ public class SimulationSession {
     public SimulationSession(SimulationConfig config) {
         this.sessionId = UUID.randomUUID().toString().substring(0, 8);
         this.config = config;
-        this.seed = System.currentTimeMillis();
+        this.seed = (config != null && config.getSeed() != null && config.getSeed() != 0L)
+                ? config.getSeed()
+                : System.currentTimeMillis();
         this.createdAt = Instant.now();
     }
 
     public SimulationSession(SimulationConfig config, long seed) {
         this.sessionId = UUID.randomUUID().toString().substring(0, 8);
         this.config = config;
-        this.seed = seed;
+        this.seed = (seed != 0L) ? seed : ((config != null && config.getSeed() != null && config.getSeed() != 0L) ? config.getSeed() : System.currentTimeMillis());
         this.createdAt = Instant.now();
     }
 
@@ -204,7 +206,8 @@ public class SimulationSession {
                 speedMultiplier,
                 lastError,
                 (config != null && config.getStepsPerDay() > 0) ? (int) (currentStep % config.getStepsPerDay()) : 0,
-                config != null ? config.getStepsPerDay() : 0);
+                config != null ? config.getStepsPerDay() : 0,
+                seed);
     }
 
     public record SessionStatus(
@@ -219,6 +222,7 @@ public class SimulationSession {
             double speedMultiplier,
             String lastError,
             int currentStepInDay,
-            int totalStepsPerDay) {
+            int totalStepsPerDay,
+            long seed) {
     }
 }

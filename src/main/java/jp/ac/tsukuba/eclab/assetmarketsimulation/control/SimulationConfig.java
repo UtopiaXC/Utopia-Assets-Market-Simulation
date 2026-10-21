@@ -18,6 +18,7 @@ public class SimulationConfig {
     private int stepsPerDay = Config.MARKET_STEPS_PER_DAY;
     private double indexBase = Config.MARKET_INDEX_BASE;
     private long stepDelay = 0; // ms
+    private Long seed = null; // null or 0 indicates auto-generating seed
 
     // ============ 2. 宏观经济与资金池 ============
     private double totalCapitalPool = Config.ECONOMY_TOTAL_CAPITAL_POOL;
@@ -133,6 +134,9 @@ public class SimulationConfig {
 
     public long getStepDelay() { return stepDelay; }
     public void setStepDelay(long stepDelay) { this.stepDelay = stepDelay; }
+
+    public Long getSeed() { return seed; }
+    public void setSeed(Long seed) { this.seed = seed; }
 
     public double getTotalCapitalPool() { return totalCapitalPool; }
     public void setTotalCapitalPool(double totalCapitalPool) { this.totalCapitalPool = totalCapitalPool; }

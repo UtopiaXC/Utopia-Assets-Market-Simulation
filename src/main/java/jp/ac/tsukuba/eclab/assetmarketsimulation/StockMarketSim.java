@@ -82,7 +82,7 @@ public class StockMarketSim extends SimState {
         // 2. Create stocks
         stocks = new Bag();
         for (int i = 0; i < numStocks; i++) {
-            stocks.add(new Stock(i));
+            stocks.add(new Stock(i, this.random));
         }
 
         // 3. Create services
@@ -183,10 +183,10 @@ public class StockMarketSim extends SimState {
 
         // Institutional traders
         for (int i = 0; i < numInstitutional; i++) {
-            double cash = Config.nextGaussian(avgInstitutionalCash,
+            double cash = Config.nextGaussian(random, avgInstitutionalCash,
                     avgInstitutionalCash * Config.AGENT_INSTITUTIONAL_CASH_STDDEV_RATIO,
                     avgInstitutionalCash * 0.1, avgInstitutionalCash * 3.0);
-            double riskTol = ThreadLocalRandom.current().nextDouble(0.2, 0.6);
+            double riskTol = 0.2 + random.nextDouble() * 0.4;
             int maxStocks = Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN +
                     random.nextInt(Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MAX - Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN + 1);
             InstitutionalTrader t = new InstitutionalTrader(traderId++, cash, riskTol, maxStocks, simulationConfig);
@@ -195,10 +195,10 @@ public class StockMarketSim extends SimState {
 
         // Retail traders
         for (int i = 0; i < numRetail; i++) {
-            double cash = Config.nextGaussian(avgRetailNoiseCash,
+            double cash = Config.nextGaussian(random, avgRetailNoiseCash,
                     avgRetailNoiseCash * Config.AGENT_RETAIL_NOISE_CASH_STDDEV_RATIO,
                     avgRetailNoiseCash * 0.05, avgRetailNoiseCash * 5.0);
-            double riskTol = ThreadLocalRandom.current().nextDouble(0.3, 0.8);
+            double riskTol = 0.3 + random.nextDouble() * 0.5;
             int maxStocks = Config.AGENT_RETAIL_MAX_STOCKS_MIN +
                     random.nextInt(Config.AGENT_RETAIL_MAX_STOCKS_MAX - Config.AGENT_RETAIL_MAX_STOCKS_MIN + 1);
             RetailTrader t = new RetailTrader(traderId++, cash, riskTol, maxStocks, simulationConfig);
@@ -207,10 +207,10 @@ public class StockMarketSim extends SimState {
 
         // Noise traders
         for (int i = 0; i < numNoise; i++) {
-            double cash = Config.nextGaussian(avgRetailNoiseCash,
+            double cash = Config.nextGaussian(random, avgRetailNoiseCash,
                     avgRetailNoiseCash * Config.AGENT_RETAIL_NOISE_CASH_STDDEV_RATIO,
                     avgRetailNoiseCash * 0.05, avgRetailNoiseCash * 5.0);
-            double riskTol = ThreadLocalRandom.current().nextDouble(0.5, 1.0);
+            double riskTol = 0.5 + random.nextDouble() * 0.5;
             int maxStocks = Config.AGENT_NOISE_MAX_STOCKS_MIN +
                     random.nextInt(Config.AGENT_NOISE_MAX_STOCKS_MAX - Config.AGENT_NOISE_MAX_STOCKS_MIN + 1);
             NoiseTrader t = new NoiseTrader(traderId++, cash, riskTol, maxStocks, simulationConfig);

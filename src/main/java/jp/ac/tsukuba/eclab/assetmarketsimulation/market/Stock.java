@@ -43,25 +43,41 @@ public class Stock {
     private final double retainedEarningsRatio;
 
     public Stock(int id) {
+        this(id, null);
+    }
+
+    public Stock(int id, ec.util.MersenneTwisterFast rand) {
         this.stockId = "UTEC" + String.format("%06d", id);
 
-        this.ipoPrice = Config.nextLogNormal(
-                Config.STOCK_IPO_PRICE[0], Config.STOCK_IPO_PRICE[1],
-                Config.STOCK_IPO_PRICE[2], Config.STOCK_IPO_PRICE[3]
-        );
+        this.ipoPrice = (rand != null) ?
+                Config.nextLogNormal(rand, Config.STOCK_IPO_PRICE[0], Config.STOCK_IPO_PRICE[1], Config.STOCK_IPO_PRICE[2], Config.STOCK_IPO_PRICE[3]) :
+                Config.nextLogNormal(Config.STOCK_IPO_PRICE[0], Config.STOCK_IPO_PRICE[1], Config.STOCK_IPO_PRICE[2], Config.STOCK_IPO_PRICE[3]);
 
-        this.netAssetsPerShare = Config.nextGaussian(Config.STOCK_IPO_NET_ASSETS[0], Config.STOCK_IPO_NET_ASSETS[1], Config.STOCK_IPO_NET_ASSETS[2], Config.STOCK_IPO_NET_ASSETS[3]);
-        this.eps = Config.nextGaussian(Config.STOCK_IPO_EPS[0], Config.STOCK_IPO_EPS[1], Config.STOCK_IPO_EPS[2], Config.STOCK_IPO_EPS[3]);
+        this.netAssetsPerShare = (rand != null) ?
+                Config.nextGaussian(rand, Config.STOCK_IPO_NET_ASSETS[0], Config.STOCK_IPO_NET_ASSETS[1], Config.STOCK_IPO_NET_ASSETS[2], Config.STOCK_IPO_NET_ASSETS[3]) :
+                Config.nextGaussian(Config.STOCK_IPO_NET_ASSETS[0], Config.STOCK_IPO_NET_ASSETS[1], Config.STOCK_IPO_NET_ASSETS[2], Config.STOCK_IPO_NET_ASSETS[3]);
+
+        this.eps = (rand != null) ?
+                Config.nextGaussian(rand, Config.STOCK_IPO_EPS[0], Config.STOCK_IPO_EPS[1], Config.STOCK_IPO_EPS[2], Config.STOCK_IPO_EPS[3]) :
+                Config.nextGaussian(Config.STOCK_IPO_EPS[0], Config.STOCK_IPO_EPS[1], Config.STOCK_IPO_EPS[2], Config.STOCK_IPO_EPS[3]);
 
         this.latestQuarterlyEps = this.eps / 4.0;
 
-        double rawLiquidShares = Config.nextGaussian(Config.STOCK_IPO_LIQUID_SHARES[0], Config.STOCK_IPO_LIQUID_SHARES[1], Config.STOCK_IPO_LIQUID_SHARES[2], Config.STOCK_IPO_LIQUID_SHARES[3]);
+        double rawLiquidShares = (rand != null) ?
+                Config.nextGaussian(rand, Config.STOCK_IPO_LIQUID_SHARES[0], Config.STOCK_IPO_LIQUID_SHARES[1], Config.STOCK_IPO_LIQUID_SHARES[2], Config.STOCK_IPO_LIQUID_SHARES[3]) :
+                Config.nextGaussian(Config.STOCK_IPO_LIQUID_SHARES[0], Config.STOCK_IPO_LIQUID_SHARES[1], Config.STOCK_IPO_LIQUID_SHARES[2], Config.STOCK_IPO_LIQUID_SHARES[3]);
         this.liquidShares = Math.floor(rawLiquidShares / 100) * 100;
         this.totalShares = this.liquidShares * 1.25;
 
-        this.sector = Sector.values()[ThreadLocalRandom.current().nextInt(Sector.values().length)];
-        this.earningsGrowth = ThreadLocalRandom.current().nextDouble(Config.STOCK_FUNDAMENTALS_GROWTH_RATE_MIN, Config.STOCK_FUNDAMENTALS_GROWTH_RATE_MAX);
-        this.beta = ThreadLocalRandom.current().nextDouble(Config.STOCK_FUNDAMENTALS_BETA_MIN, Config.STOCK_FUNDAMENTALS_BETA_MAX);
+        if (rand != null) {
+            this.sector = Sector.values()[rand.nextInt(Sector.values().length)];
+            this.earningsGrowth = Config.STOCK_FUNDAMENTALS_GROWTH_RATE_MIN + rand.nextDouble() * (Config.STOCK_FUNDAMENTALS_GROWTH_RATE_MAX - Config.STOCK_FUNDAMENTALS_GROWTH_RATE_MIN);
+            this.beta = Config.STOCK_FUNDAMENTALS_BETA_MIN + rand.nextDouble() * (Config.STOCK_FUNDAMENTALS_BETA_MAX - Config.STOCK_FUNDAMENTALS_BETA_MIN);
+        } else {
+            this.sector = Sector.values()[ThreadLocalRandom.current().nextInt(Sector.values().length)];
+            this.earningsGrowth = ThreadLocalRandom.current().nextDouble(Config.STOCK_FUNDAMENTALS_GROWTH_RATE_MIN, Config.STOCK_FUNDAMENTALS_GROWTH_RATE_MAX);
+            this.beta = ThreadLocalRandom.current().nextDouble(Config.STOCK_FUNDAMENTALS_BETA_MIN, Config.STOCK_FUNDAMENTALS_BETA_MAX);
+        }
         this.quarterlyGrowthRate = this.earningsGrowth / 4.0;
         this.epsVolatility = Config.STOCK_FUNDAMENTALS_EPS_VOLATILITY;
         this.retainedEarningsRatio = Config.STOCK_FUNDAMENTALS_RETAINED_EARNINGS_RATIO;

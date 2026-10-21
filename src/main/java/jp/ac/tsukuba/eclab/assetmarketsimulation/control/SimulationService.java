@@ -46,7 +46,7 @@ public class SimulationService {
     public SimulationSession.SessionStatus getStatus() {
         if (currentSession == null) {
             return new SimulationSession.SessionStatus(
-                    null, null, "NO_SESSION", 0, 0, 0, 0, 0, 1.0, null, 0, 0);
+                    null, null, "NO_SESSION", 0, 0, 0, 0, 0, 1.0, null, 0, 0, 0L);
         }
         return currentSession.toStatus();
     }

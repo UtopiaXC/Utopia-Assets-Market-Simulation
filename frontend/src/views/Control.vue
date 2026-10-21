@@ -15,6 +15,10 @@
             <span>Session: <code>{{ status.sessionId || 'None' }}</code></span>
             <n-divider vertical />
             <span>Target DB: <code>{{ (status.simulationName || simulationName) + '.db' }}</code></span>
+            <template v-if="status.seed">
+              <n-divider vertical />
+              <span>Seed: <code>{{ status.seed }}</code></span>
+            </template>
           </div>
         </div>
 
@@ -219,24 +223,43 @@
       </n-grid>
     </n-card>
 
-    <!-- 2. Preset Configuration Dropdown Selector -->
+    <!-- 2. Preset Configuration Dropdown Selector & Export/Import -->
     <n-card class="preset-card" :bordered="false" size="small">
       <div class="preset-container">
-        <div class="preset-title">
-          <span>Configuration Preset:</span>
+        <div class="preset-left">
+          <div class="preset-title">
+            <span>Configuration Preset:</span>
+          </div>
+          <div class="preset-select-group">
+            <n-select 
+              v-model:value="selectedPresetId" 
+              :options="presetSelectOptions" 
+              :disabled="isRunning"
+              placeholder="Select a preset configuration..."
+              style="width: 320px"
+              @update:value="onPresetChange"
+            />
+            <n-text depth="3" class="preset-desc-text">
+              {{ selectedPresetDescription }}
+            </n-text>
+          </div>
         </div>
-        <div class="preset-select-group">
-          <n-select 
-            v-model:value="selectedPresetId" 
-            :options="presetSelectOptions" 
-            :disabled="isRunning"
-            placeholder="Select a preset configuration..."
-            style="width: 380px"
-            @update:value="onPresetChange"
+        <div class="config-actions">
+          <n-button size="small" type="primary" secondary @click="exportConfigFile" :disabled="isRunning">
+            <template #icon><n-icon><DownloadOutline /></n-icon></template>
+            Export Config
+          </n-button>
+          <n-button size="small" type="info" secondary @click="triggerImportFile" :disabled="isRunning">
+            <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
+            Import Config
+          </n-button>
+          <input
+            type="file"
+            ref="fileInputRef"
+            accept=".json"
+            style="display: none"
+            @change="handleConfigFileImport"
           />
-          <n-text depth="3" class="preset-desc-text">
-            {{ selectedPresetDescription }}
-          </n-text>
         </div>
       </div>
     </n-card>
@@ -251,6 +274,26 @@
               <n-grid-item>
                 <n-form-item label="Simulation Name">
                   <n-input v-model:value="simulationName" placeholder="e.g. sim_experiment_01" :disabled="isRunning" />
+                </n-form-item>
+              </n-grid-item>
+              <n-grid-item>
+                <n-form-item label="Random Seed">
+                  <n-input-group style="width: 100%">
+                    <n-input-number
+                      v-model:value="config.seed"
+                      placeholder="Auto"
+                      :disabled="isRunning"
+                      :show-button="false"
+                      style="flex: 1"
+                    />
+                    <n-button type="primary" secondary @click="generateRandomSeed" :disabled="isRunning" title="生成新种子">
+                      <template #icon><n-icon><DiceOutline /></n-icon></template>
+                      Random
+                    </n-button>
+                    <n-button secondary @click="copySeed" :disabled="!config.seed" title="复制种子">
+                      <template #icon><n-icon><CopyOutline /></n-icon></template>
+                    </n-button>
+                  </n-input-group>
                 </n-form-item>
               </n-grid-item>
               <n-grid-item>
@@ -740,12 +783,12 @@ import { useRouter } from 'vue-router'
 import {
   NCard, NButton, NButtonGroup, NProgress, NText, NIcon, NTag,
   NTabs, NTabPane, NForm, NFormItem, NInputNumber, NSelect, NSlider,
-  NGrid, NGridItem, NInput, NDivider, NDataTable, NSwitch,
+  NGrid, NGridItem, NInput, NDivider, NDataTable, NSwitch, NInputGroup,
   useMessage, useDialog
 } from 'naive-ui'
 import {
   Play, Pause, Stop, Refresh, Speedometer,
-  Sparkles, BarChart
+  Sparkles, BarChart, DownloadOutline, CloudUploadOutline, DiceOutline, CopyOutline
 } from '@vicons/ionicons5'
 import { controlApi, scenarioApi } from '@/services/api'
 import { useSimulationStore } from '@/stores/simulation'
@@ -782,7 +825,8 @@ const status = ref({
   speedMultiplier: 1.0,
   lastError: null as string | null,
   currentStepInDay: 0,
-  totalStepsPerDay: 22
+  totalStepsPerDay: 22,
+  seed: null as number | null
 })
 
 const metrics = ref({
@@ -796,6 +840,7 @@ const metrics = ref({
 
 // Comprehensive Config State with stepDelay = 0 default
 const config = ref({
+  seed: null as number | null,
   simulationName: simulationName.value,
   scenarioName: 'DefaultScenario',
   numStocks: 50,
@@ -1128,6 +1173,110 @@ function onPresetChange(presetId: string) {
     message.success(`Applied configuration preset: ${preset.name}`)
   }
 }
+
+// Seed & Config Export/Import Management
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+function generateRandomSeed() {
+  const newSeed = Math.floor(1000000000 + Math.random() * 9000000000)
+  config.value.seed = newSeed
+  message.success(`Generated random seed: ${newSeed}`)
+}
+
+async function copySeed() {
+  if (!config.value.seed) return
+  try {
+    await navigator.clipboard.writeText(String(config.value.seed))
+    message.success(`Seed ${config.value.seed} copied to clipboard`)
+  } catch (e) {
+    message.info(`Seed: ${config.value.seed}`)
+  }
+}
+
+function exportConfigFile() {
+  try {
+    const exportData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      simulationName: simulationName.value,
+      stepDelay: stepDelay.value,
+      config: {
+        ...config.value
+      },
+      scheduledEvents: scheduledEvents.value
+    }
+    const jsonStr = JSON.stringify(exportData, null, 2)
+    const blob = new Blob([jsonStr], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${simulationName.value || 'sim_config'}_${config.value.seed ? 'seed' + config.value.seed : 'config'}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    message.success('Configuration exported successfully')
+  } catch (e: any) {
+    message.error('Failed to export configuration: ' + e.message)
+  }
+}
+
+function triggerImportFile() {
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+    fileInputRef.value.click()
+  }
+}
+
+function handleConfigFileImport(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const content = e.target?.result as string
+      const parsed = JSON.parse(content)
+
+      // Support both structured export format and flat configuration JSON
+      const incomingConfig = parsed.config || parsed
+
+      // Update configuration fields
+      for (const [key, value] of Object.entries(incomingConfig)) {
+        if (key in config.value) {
+          (config.value as any)[key] = value
+        }
+      }
+
+      // Explicitly restore seed if present
+      if (incomingConfig.seed !== undefined) {
+        config.value.seed = incomingConfig.seed
+      } else if (parsed.seed !== undefined) {
+        config.value.seed = parsed.seed
+      }
+
+      // Restore simulation name and delay if present
+      if (parsed.simulationName) {
+        simulationName.value = parsed.simulationName
+      }
+      if (parsed.stepDelay !== undefined) {
+        stepDelay.value = parsed.stepDelay
+      }
+
+      // Sync minutesPerStep with stepsPerDay
+      if (config.value.stepsPerDay && config.value.stepsPerDay > 0) {
+        minutesPerStep.value = Math.max(1, Math.round(240 / config.value.stepsPerDay))
+      }
+
+      message.success(`Configuration loaded! Seed: ${config.value.seed ?? 'Auto'}`)
+    } catch (err: any) {
+      message.error('Failed to parse configuration file: ' + err.message)
+    }
+  }
+  reader.readAsText(file)
+}
+
 
 // Computed Total Days & Progress (Dynamically tracks running session)
 const displayTotalDays = computed(() => {
@@ -1698,9 +1847,23 @@ onUnmounted(() => {
 
 .preset-container {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.preset-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.config-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .preset-title {

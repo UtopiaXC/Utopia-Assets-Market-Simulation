@@ -177,8 +177,26 @@ public final class Config {
         return value;
     }
 
+    public static double nextGaussian(ec.util.MersenneTwisterFast rand, double mean, double stddev, double min, double max) {
+        if (rand == null) return nextGaussian(mean, stddev, min, max);
+        double value = mean + rand.nextGaussian() * stddev;
+        if (value < min) value = min;
+        if (value > max) value = max;
+        return value;
+    }
+
     public static double nextLogNormal(double mu, double sigma, double min, double max) {
         double normalValue = ThreadLocalRandom.current().nextGaussian();
+        double logValue = mu + normalValue * sigma;
+        double value = Math.exp(logValue);
+        if (value < min) value = min;
+        if (value > max) value = max;
+        return value;
+    }
+
+    public static double nextLogNormal(ec.util.MersenneTwisterFast rand, double mu, double sigma, double min, double max) {
+        if (rand == null) return nextLogNormal(mu, sigma, min, max);
+        double normalValue = rand.nextGaussian();
         double logValue = mu + normalValue * sigma;
         double value = Math.exp(logValue);
         if (value < min) value = min;
