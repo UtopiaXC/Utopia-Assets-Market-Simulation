@@ -135,10 +135,10 @@ public class LeverageService {
     private void forcedLiquidation(BaseTrader borrower, Market market) {
         totalForcedLiquidations++;
 
-        System.out.println(">>> [MARGIN CALL] Agent " + borrower.traderId +
-                " forced liquidation! Margin: " +
-                String.format("%.2f%%", borrower.portfolio.getMarginRatio() * 100) +
-                " Borrowed: " + String.format("%.0f", borrower.portfolio.borrowedCash));
+//        System.out.println(">>> [MARGIN CALL] Agent " + borrower.traderId +
+//                " forced liquidation! Margin: " +
+//                String.format("%.2f%%", borrower.portfolio.getMarginRatio() * 100) +
+//                " Borrowed: " + String.format("%.0f", borrower.portfolio.borrowedCash));
 
         // 以当前价格 -2% 紧急卖出所有可用持仓
         Map<Stock, Position> positions = borrower.portfolio.getPositions();

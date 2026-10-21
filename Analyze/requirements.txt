@@ -2,3 +2,7 @@ dash
 pandas
 plotly
 dash-bootstrap-components
+numpy
+scipy
+matplotlib
+statsmodels

@@ -38,8 +38,8 @@ public class RetailTrader extends BaseTrader {
         super(id, "RETAIL", initialCash, riskTolerance, maxStocks,
                 Config.AGENT_RETAIL_MAX_STOCKS_MIN,
                 Config.AGENT_RETAIL_MAX_STOCKS_MAX,
-                Config.AGENT_RETAIL_TRADE_INTERVAL_MIN_DAYS,
-                Config.AGENT_RETAIL_TRADE_INTERVAL_MAX_DAYS);
+                (cfg != null) ? cfg.getValTradeIntervalMinRetail() : Config.AGENT_RETAIL_TRADE_INTERVAL_MIN_DAYS,
+                (cfg != null) ? cfg.getValTradeIntervalMaxRetail() : Config.AGENT_RETAIL_TRADE_INTERVAL_MAX_DAYS);
 
         this.wFundBase = (cfg != null) ? cfg.getValFundWeightRetail() : Config.VALUATION_FUND_WEIGHT_RETAIL;
         this.wSocialBase = (cfg != null) ? cfg.getValSocialWeightRetail() : Config.VALUATION_SOCIAL_WEIGHT_RETAIL;

@@ -36,8 +36,8 @@ public class InstitutionalTrader extends BaseTrader {
         super(id, "INSTITUTIONAL", initialCash, riskTolerance, maxStocks,
                 Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MIN,
                 Config.AGENT_INSTITUTIONAL_MAX_STOCKS_MAX,
-                Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MIN_DAYS,
-                Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MAX_DAYS);
+                (cfg != null) ? cfg.getValTradeIntervalMinInst() : Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MIN_DAYS,
+                (cfg != null) ? cfg.getValTradeIntervalMaxInst() : Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MAX_DAYS);
 
         this.wFundBase = (cfg != null) ? cfg.getValFundWeightInst() : Config.VALUATION_FUND_WEIGHT_INST;
         this.wSocialBase = (cfg != null) ? cfg.getValSocialWeightInst() : Config.VALUATION_SOCIAL_WEIGHT_INST;

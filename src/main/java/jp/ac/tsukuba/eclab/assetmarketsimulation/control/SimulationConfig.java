@@ -53,13 +53,15 @@ public class SimulationConfig {
     private double sectorBonusIndustry = Config.VALUATION_SECTOR_INDUSTRY;
     private double sectorBonusEnergy = Config.VALUATION_SECTOR_ENERGY;
 
-    // ============ 7. 三因子估值基准权重 ============
+    // ============ 7. 三因子估值基准权重与交易频率 ============
     // 机构交易者 (Institutional)
     private double valFundWeightInst = Config.VALUATION_FUND_WEIGHT_INST;
     private double valSocialWeightInst = Config.VALUATION_SOCIAL_WEIGHT_INST;
     private double valTrendWeightInst = Config.VALUATION_TREND_WEIGHT_INST;
     private double valNoiseStdDevInst = Config.VALUATION_NOISE_STDDEV_INST;
     private int valLookbackDaysInst = Config.VALUATION_LOOKBACK_DAYS_INST;
+    private int valTradeIntervalMinInst = Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MIN_DAYS;
+    private int valTradeIntervalMaxInst = Config.AGENT_INSTITUTIONAL_TRADE_INTERVAL_MAX_DAYS;
 
     // 散户交易者 (Retail)
     private double valFundWeightRetail = Config.VALUATION_FUND_WEIGHT_RETAIL;
@@ -67,6 +69,8 @@ public class SimulationConfig {
     private double valTrendWeightRetail = Config.VALUATION_TREND_WEIGHT_RETAIL;
     private double valNoiseStdDevRetail = Config.VALUATION_NOISE_STDDEV_RETAIL;
     private int valLookbackDaysRetail = Config.VALUATION_LOOKBACK_DAYS_RETAIL;
+    private int valTradeIntervalMinRetail = Config.AGENT_RETAIL_TRADE_INTERVAL_MIN_DAYS;
+    private int valTradeIntervalMaxRetail = Config.AGENT_RETAIL_TRADE_INTERVAL_MAX_DAYS;
 
     // 噪声交易者 (Noise)
     private double valFundWeightNoise = Config.VALUATION_FUND_WEIGHT_NOISE;
@@ -74,6 +78,8 @@ public class SimulationConfig {
     private double valTrendWeightNoise = Config.VALUATION_TREND_WEIGHT_NOISE;
     private double valNoiseStdDevNoise = Config.VALUATION_NOISE_STDDEV_NOISE;
     private int valLookbackDaysNoise = Config.VALUATION_LOOKBACK_DAYS_NOISE;
+    private int valTradeIntervalMinNoise = Config.AGENT_NOISE_TRADE_INTERVAL_MIN_DAYS;
+    private int valTradeIntervalMaxNoise = Config.AGENT_NOISE_TRADE_INTERVAL_MAX_DAYS;
 
     // ============ 8. 社交网络与信誉评级 ============
     private int socialTopK = Config.SOCIAL_TOP_K_NEIGHBORS;
@@ -244,6 +250,24 @@ public class SimulationConfig {
 
     public int getValLookbackDaysNoise() { return valLookbackDaysNoise; }
     public void setValLookbackDaysNoise(int valLookbackDaysNoise) { this.valLookbackDaysNoise = valLookbackDaysNoise; }
+
+    public int getValTradeIntervalMinInst() { return valTradeIntervalMinInst; }
+    public void setValTradeIntervalMinInst(int valTradeIntervalMinInst) { this.valTradeIntervalMinInst = valTradeIntervalMinInst; }
+
+    public int getValTradeIntervalMaxInst() { return valTradeIntervalMaxInst; }
+    public void setValTradeIntervalMaxInst(int valTradeIntervalMaxInst) { this.valTradeIntervalMaxInst = valTradeIntervalMaxInst; }
+
+    public int getValTradeIntervalMinRetail() { return valTradeIntervalMinRetail; }
+    public void setValTradeIntervalMinRetail(int valTradeIntervalMinRetail) { this.valTradeIntervalMinRetail = valTradeIntervalMinRetail; }
+
+    public int getValTradeIntervalMaxRetail() { return valTradeIntervalMaxRetail; }
+    public void setValTradeIntervalMaxRetail(int valTradeIntervalMaxRetail) { this.valTradeIntervalMaxRetail = valTradeIntervalMaxRetail; }
+
+    public int getValTradeIntervalMinNoise() { return valTradeIntervalMinNoise; }
+    public void setValTradeIntervalMinNoise(int valTradeIntervalMinNoise) { this.valTradeIntervalMinNoise = valTradeIntervalMinNoise; }
+
+    public int getValTradeIntervalMaxNoise() { return valTradeIntervalMaxNoise; }
+    public void setValTradeIntervalMaxNoise(int valTradeIntervalMaxNoise) { this.valTradeIntervalMaxNoise = valTradeIntervalMaxNoise; }
 
     public int getSocialTopK() { return socialTopK; }
     public void setSocialTopK(int socialTopK) { this.socialTopK = socialTopK; }

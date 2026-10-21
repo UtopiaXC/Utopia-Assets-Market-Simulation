@@ -373,7 +373,7 @@
             <!-- Institutional -->
             <n-grid-item>
               <n-card title="Institutional Trader" size="small" class="factor-group-card">
-                <n-form label-placement="left" label-width="140px">
+                <n-form label-placement="left" label-width="150px">
                   <n-form-item label="Fundamental:">
                     <n-slider v-model:value="config.valFundWeightInst" :min="0" :max="1" :step="0.05" :disabled="isRunning" />
                   </n-form-item>
@@ -389,6 +389,13 @@
                   <n-form-item label="Noise StdDev:">
                     <n-input-number v-model:value="config.valNoiseStdDevInst" :min="0" :max="0.5" :step="0.01" :disabled="isRunning" style="width: 100%" />
                   </n-form-item>
+                  <n-form-item label="Trade Interval (Days):">
+                    <n-input-group>
+                      <n-input-number v-model:value="config.valTradeIntervalMinInst" :min="1" :max="config.valTradeIntervalMaxInst" :disabled="isRunning" style="width: 50%" placeholder="Min" />
+                      <n-input-group-label>~</n-input-group-label>
+                      <n-input-number v-model:value="config.valTradeIntervalMaxInst" :min="config.valTradeIntervalMinInst" :max="30" :disabled="isRunning" style="width: 50%" placeholder="Max" />
+                    </n-input-group>
+                  </n-form-item>
                 </n-form>
               </n-card>
             </n-grid-item>
@@ -396,7 +403,7 @@
             <!-- Retail -->
             <n-grid-item>
               <n-card title="Retail Trader" size="small" class="factor-group-card">
-                <n-form label-placement="left" label-width="140px">
+                <n-form label-placement="left" label-width="150px">
                   <n-form-item label="Fundamental:">
                     <n-slider v-model:value="config.valFundWeightRetail" :min="0" :max="1" :step="0.05" :disabled="isRunning" />
                   </n-form-item>
@@ -412,6 +419,13 @@
                   <n-form-item label="Noise StdDev:">
                     <n-input-number v-model:value="config.valNoiseStdDevRetail" :min="0" :max="0.5" :step="0.01" :disabled="isRunning" style="width: 100%" />
                   </n-form-item>
+                  <n-form-item label="Trade Interval (Days):">
+                    <n-input-group>
+                      <n-input-number v-model:value="config.valTradeIntervalMinRetail" :min="1" :max="config.valTradeIntervalMaxRetail" :disabled="isRunning" style="width: 50%" placeholder="Min" />
+                      <n-input-group-label>~</n-input-group-label>
+                      <n-input-number v-model:value="config.valTradeIntervalMaxRetail" :min="config.valTradeIntervalMinRetail" :max="30" :disabled="isRunning" style="width: 50%" placeholder="Max" />
+                    </n-input-group>
+                  </n-form-item>
                 </n-form>
               </n-card>
             </n-grid-item>
@@ -419,7 +433,7 @@
             <!-- Noise -->
             <n-grid-item>
               <n-card title="Noise Trader" size="small" class="factor-group-card">
-                <n-form label-placement="left" label-width="140px">
+                <n-form label-placement="left" label-width="150px">
                   <n-form-item label="Fundamental:">
                     <n-slider v-model:value="config.valFundWeightNoise" :min="0" :max="1" :step="0.05" :disabled="isRunning" />
                   </n-form-item>
@@ -434,6 +448,13 @@
                   </n-form-item>
                   <n-form-item label="Noise StdDev:">
                     <n-input-number v-model:value="config.valNoiseStdDevNoise" :min="0" :max="0.5" :step="0.01" :disabled="isRunning" style="width: 100%" />
+                  </n-form-item>
+                  <n-form-item label="Trade Interval (Days):">
+                    <n-input-group>
+                      <n-input-number v-model:value="config.valTradeIntervalMinNoise" :min="1" :max="config.valTradeIntervalMaxNoise" :disabled="isRunning" style="width: 50%" placeholder="Min" />
+                      <n-input-group-label>~</n-input-group-label>
+                      <n-input-number v-model:value="config.valTradeIntervalMaxNoise" :min="config.valTradeIntervalMinNoise" :max="30" :disabled="isRunning" style="width: 50%" placeholder="Max" />
+                    </n-input-group>
                   </n-form-item>
                 </n-form>
               </n-card>
@@ -817,18 +838,24 @@ const config = ref({
   valTrendWeightInst: 0.10,
   valNoiseStdDevInst: 0.05,
   valLookbackDaysInst: 20,
+  valTradeIntervalMinInst: 3,
+  valTradeIntervalMaxInst: 5,
 
   valFundWeightRetail: 0.50,
   valSocialWeightRetail: 0.25,
   valTrendWeightRetail: 0.25,
   valNoiseStdDevRetail: 0.10,
   valLookbackDaysRetail: 10,
+  valTradeIntervalMinRetail: 1,
+  valTradeIntervalMaxRetail: 3,
 
   valFundWeightNoise: 0.10,
   valSocialWeightNoise: 0.30,
   valTrendWeightNoise: 0.60,
   valNoiseStdDevNoise: 0.20,
   valLookbackDaysNoise: 5,
+  valTradeIntervalMinNoise: 1,
+  valTradeIntervalMaxNoise: 3,
 
   socialTopK: 5,
   socialInstNeighborsCount: 3,
@@ -914,12 +941,18 @@ const presets = [
       valFundWeightInst: 0.80,
       valSocialWeightInst: 0.10,
       valTrendWeightInst: 0.10,
+      valTradeIntervalMinInst: 3,
+      valTradeIntervalMaxInst: 5,
       valFundWeightRetail: 0.50,
       valSocialWeightRetail: 0.25,
       valTrendWeightRetail: 0.25,
+      valTradeIntervalMinRetail: 1,
+      valTradeIntervalMaxRetail: 3,
       valFundWeightNoise: 0.10,
       valSocialWeightNoise: 0.30,
       valTrendWeightNoise: 0.60,
+      valTradeIntervalMinNoise: 1,
+      valTradeIntervalMaxNoise: 3,
       socialInstNeighborsCount: 3,
       socialPeerNeighborsCount: 3,
       socialInstInfluenceRatio: 0.70,

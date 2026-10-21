@@ -37,8 +37,8 @@ public class NoiseTrader extends BaseTrader {
         super(id, "NOISE", initialCash, riskTolerance, maxStocks,
                 Config.AGENT_NOISE_MAX_STOCKS_MIN,
                 Config.AGENT_NOISE_MAX_STOCKS_MAX,
-                Config.AGENT_NOISE_TRADE_INTERVAL_MIN_DAYS,
-                Config.AGENT_NOISE_TRADE_INTERVAL_MAX_DAYS);
+                (cfg != null) ? cfg.getValTradeIntervalMinNoise() : Config.AGENT_NOISE_TRADE_INTERVAL_MIN_DAYS,
+                (cfg != null) ? cfg.getValTradeIntervalMaxNoise() : Config.AGENT_NOISE_TRADE_INTERVAL_MAX_DAYS);
 
         this.wFundBase = (cfg != null) ? cfg.getValFundWeightNoise() : Config.VALUATION_FUND_WEIGHT_NOISE;
         this.wSocialBase = (cfg != null) ? cfg.getValSocialWeightNoise() : Config.VALUATION_SOCIAL_WEIGHT_NOISE;
